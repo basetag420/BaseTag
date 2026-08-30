@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.26
+// @version      1.27
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -10,6 +10,7 @@
 // @grant        unsafeWindow
 // @connect      script.google.com
 // @connect      script.googleusercontent.com
+// @connect      raw.githubusercontent.com
 // ==/UserScript==
 
 (function () {
@@ -136,6 +137,61 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
+
+            const BASETAG_LOCAL_VERSION = "1.27";
+            const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
+
+            function compareVersions(a,b) {
+                const aa=String(a||"0").split(".").map(function(x){return parseInt(x,10)||0;});
+                const bb=String(b||"0").split(".").map(function(x){return parseInt(x,10)||0;});
+                const n=Math.max(aa.length,bb.length);
+                for(let i=0;i<n;i++){
+                    const av=aa[i]||0,bv=bb[i]||0;
+                    if(av>bv)return 1;
+                    if(av<bv)return -1;
+                }
+                return 0;
+            }
+
+            function checkBaseTagUpdate(btn,statusLbl) {
+                if(!nativeGMRequest){
+                    try{statusLbl.setValue("Update check unavailable");statusLbl.setTextColor("#ef4444");}catch(e){}
+                    return;
+                }
+                try{btn.setEnabled(false);btn.setLabel("Checking…");}catch(e){}
+                nativeGMRequest({
+                    method:"GET",
+                    url:BASETAG_RAW_UPDATE_URL + "?t=" + Date.now(),
+                    timeout:15000,
+                    headers:{"Cache-Control":"no-cache"},
+                    onload:function(r){
+                        try{
+                            const text=String(r.responseText||"");
+                            const m=text.match(/^[ \t]*\/\/[ \t]*@version[ \t]+([^\s]+)[ \t]*$/mi);
+                            if(!m) throw new Error("No @version in GitHub file");
+                            const remote=String(m[1]).trim();
+                            if(compareVersions(remote,BASETAG_LOCAL_VERSION)>0){
+                                statusLbl.setValue("New v"+remote);
+                                statusLbl.setTextColor("#22c55e");
+                                btn.setLabel("UPDATE → v"+remote);
+                                btn.setEnabled(true);
+                                btn.__baseTagUpdateReady=true;
+                                btn.__baseTagRemoteVersion=remote;
+                            }else{
+                                statusLbl.setValue("Up to date · v"+BASETAG_LOCAL_VERSION);
+                                statusLbl.setTextColor("#64748b");
+                                btn.setLabel("CHECK UPDATE");
+                                btn.setEnabled(true);
+                                btn.__baseTagUpdateReady=false;
+                            }
+                        }catch(e){
+                            try{statusLbl.setValue("Update check error");statusLbl.setTextColor("#ef4444");btn.setLabel("CHECK UPDATE");btn.setEnabled(true);}catch(ex){}
+                        }
+                    },
+                    onerror:function(){try{statusLbl.setValue("GitHub unavailable");statusLbl.setTextColor("#ef4444");btn.setLabel("CHECK UPDATE");btn.setEnabled(true);}catch(e){}},
+                    ontimeout:function(){try{statusLbl.setValue("Update timeout");statusLbl.setTextColor("#ef4444");btn.setLabel("CHECK UPDATE");btn.setEnabled(true);}catch(e){}}
+                });
+            }
 
             function wait() {
             try {
@@ -1083,6 +1139,9 @@
                 const toolbar=new qx.ui.container.Composite(new qx.ui.layout.HBox(6)); toolbar.set({padding:[5,10],backgroundColor:"#0a0f1e"});
                 let currentFilter="ALL"; let contentArea=null;
                 let sortColumn="time", sortDirection=-1;
+                let currentPage=1;
+                let pageSize=100;
+                let pagerInfo=null, btnPrevPage=null, btnNextPage=null, pageSizeSelect=null;
 
                 function sortableValue(m,col){
                     if(col==="time"){
@@ -1115,6 +1174,7 @@
         function setFilter(f,activeBtn){
 
             currentFilter=f;
+            currentPage=1;
 
             [
                 btnAll,
@@ -1153,10 +1213,49 @@
                 flex2.setWidth(1);
                 toolbar.add(flex2,{flex:1});
                 const btnSync=makeBtn("↻ Sync","#0f172a","#94a3b8",70);
-                btnSync.addListener("execute",function(){syncFromServer(); btnSync.setLabel("Syncing…"); setTimeout(function(){openBoardSafe();},1400);});
+                btnSync.addListener("execute",function(){syncFromServer(); btnSync.setLabel("Syncing…"); setTimeout(function(){btnSync.setLabel("↻ Sync");},1400);});
                 toolbar.add(btnSync);
 
+                const updateStatus=new qx.ui.basic.Label("v"+BASETAG_LOCAL_VERSION);
+                updateStatus.set({textColor:"#475569",alignY:"middle",paddingLeft:6});
+                toolbar.add(updateStatus);
+
+                const btnUpdate=makeBtn("CHECK UPDATE","#0f172a","#94a3b8",125);
+                btnUpdate.addListener("execute",function(){
+                    if(btnUpdate.__baseTagUpdateReady){
+                        // Open the exact .user.js RAW URL. Tampermonkey handles install/update.
+                        try{pageWindow.open(BASETAG_RAW_UPDATE_URL,"_blank");}
+                        catch(e){window.open(BASETAG_RAW_UPDATE_URL,"_blank");}
+                        return;
+                    }
+                    checkBaseTagUpdate(btnUpdate,updateStatus);
+                });
+                toolbar.add(btnUpdate);
+
                 pageMarks.add(toolbar);
+
+                const pagerBar=new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
+                pagerBar.set({padding:[4,10],backgroundColor:"#080d18"});
+                btnPrevPage=makeBtn("◀","#0f172a","#94a3b8",42);
+                btnNextPage=makeBtn("▶","#0f172a","#94a3b8",42);
+                pagerInfo=new qx.ui.basic.Label("");
+                pagerInfo.set({textColor:"#64748b",alignY:"middle",width:180});
+                pageSizeSelect=new qx.ui.form.SelectBox(); pageSizeSelect.set({width:75});
+                [50,100,200].forEach(function(v){
+                    const it=new qx.ui.form.ListItem(String(v)); it.setModel(v); pageSizeSelect.add(it);
+                    if(v===pageSize)pageSizeSelect.setSelection([it]);
+                });
+                btnPrevPage.addListener("execute",function(){if(currentPage>1){currentPage--;rebuildContent();}});
+                btnNextPage.addListener("execute",function(){currentPage++;rebuildContent();});
+                pageSizeSelect.addListener("changeSelection",function(){
+                    const s=pageSizeSelect.getSelection()[0]; if(!s)return;
+                    pageSize=Number(s.getModel())||100; currentPage=1; rebuildContent();
+                });
+                pagerBar.add(btnPrevPage); pagerBar.add(btnNextPage); pagerBar.add(pagerInfo);
+                const pagerFlex=new qx.ui.core.Spacer(); pagerBar.add(pagerFlex,{flex:1});
+                const rowsLbl=new qx.ui.basic.Label("Rows:"); rowsLbl.set({textColor:"#475569",alignY:"middle"}); pagerBar.add(rowsLbl);
+                pagerBar.add(pageSizeSelect);
+                pageMarks.add(pagerBar);
 
                 const scroll=new qx.ui.container.Scroll(); scroll.set({backgroundColor:"#080b14",minHeight:400});
                 const outerVbox=new qx.ui.container.Composite(new qx.ui.layout.VBox(6)); outerVbox.set({padding:10,backgroundColor:"#080b14"});
@@ -1169,7 +1268,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("PLAYER v1.8 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("PLAYER v"+BASETAG_LOCAL_VERSION+" · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 win.add(pageMarks,{flex:1});
@@ -1191,7 +1290,15 @@
             currentFilter==="MEMBER"  ? members :
             currentFilter==="SIM"     ? simmed :
             allArr;
-                    if(!filtered.length){const empty=new qx.ui.basic.Label("No marks matching this filter."); empty.set({textColor:"#1e3a5a",padding:12}); contentArea.add(empty); return;}
+                    const sorted=sortRows(filtered);
+                    const totalPages=Math.max(1,Math.ceil(sorted.length/pageSize));
+                    if(currentPage>totalPages)currentPage=totalPages;
+                    if(currentPage<1)currentPage=1;
+                    try{pagerInfo.setValue("Page "+currentPage+" / "+totalPages+" · "+sorted.length+" rows");}catch(e){}
+                    try{btnPrevPage.setEnabled(currentPage>1);}catch(e){}
+                    try{btnNextPage.setEnabled(currentPage<totalPages);}catch(e){}
+                    if(!sorted.length){const empty=new qx.ui.basic.Label("No marks matching this filter."); empty.set({textColor:"#1e3a5a",padding:12}); contentArea.add(empty); return;}
+                    const pageRows=sorted.slice((currentPage-1)*pageSize,currentPage*pageSize);
                     // Tabs above already filter FAST/KILL/IGNORE/MEMBER/SIM.
                     // One flat table, matching Google Sheet field order.
                     const hdrRow=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
@@ -1227,7 +1334,7 @@
                     hdrRow.add(delHdr);
                     contentArea.add(hdrRow);
 
-                    sortRows(filtered).forEach(function(m,idx){
+                    pageRows.forEach(function(m,idx){
                         const isMember=(m.action==="MEMBER"||m.mark==="MEMBER");
                         const rowBg=m.action==="KILL"?(idx%2===0?"#140808":"#110606"):(idx%2===0?"#0f1105":"#0d0f04");
                         const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
@@ -1270,7 +1377,7 @@
                                     delete memberMarks[k];
                                     saveLocal(MEMBER_STORAGE_KEY,memberMarks);
                                     refreshMarkedObjects();
-                                    openBoardSafe();
+                                    try{contentArea.remove(row);row.destroy();}catch(ex){rebuildContent();}
                                 });
                             })(m.k);
                             deleteCell.add(rb);
