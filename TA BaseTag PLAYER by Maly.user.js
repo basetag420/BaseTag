@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.33
+// @version      1.34
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -71,9 +71,17 @@
             let marks        = loadLocal(STORAGE_KEY);
             let mySimSaves   = loadLocal(SIM_STORAGE_KEY);
 
+            let memberMarks = loadLocal(MEMBER_STORAGE_KEY);
+            let panel        = null;
+            let scriptsAdded = false;
+            let apiDown      = false;
+            let syncInProgress = false;
+            let myPlayerName = "";
+            let shiftPending = [];
+            let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.33";
+            const BASETAG_LOCAL_VERSION = "1.34";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -574,7 +582,6 @@
                     for(let id in cities) { const c=cities[id]; if(!c||c.__AFWBv14HAF||typeof c.HasAttackFormation!=="function") continue; c.__AFWBv14HAF=true; c.__AFWBv14HAFOrig=c.HasAttackFormation; c.HasAttackFormation=function(tid){try{if(isMarkedById(tid)) return true;}catch(e){} return c.__AFWBv14HAFOrig.apply(c,arguments);}; }
                 } catch(e){}
             }
-
             function hookRegionMenu() {
             const menu = webfrontend.gui.region.RegionCityMenu.getInstance();
 
