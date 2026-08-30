@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.30
+// @version      1.32
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
-// @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA BaseTag PLAYER by Maly.user.js
-// @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA BaseTag PLAYER by Maly.user.js
+// @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
+// @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @match        https://*.alliances.commandandconquer.com/*/index.aspx*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -138,8 +138,8 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.30";
-            const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA BaseTag PLAYER by Maly.user.js";
+            const BASETAG_LOCAL_VERSION = "1.32";
+            const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
                 const aa=String(a||"0").split(".").map(function(x){return parseInt(x,10)||0;});
