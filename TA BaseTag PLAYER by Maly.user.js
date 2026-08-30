@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.27
+// @version      1.28
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -138,7 +138,7 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.27";
+            const BASETAG_LOCAL_VERSION = "1.28";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -1021,6 +1021,29 @@
                 }
             }
 
+            // ── Persistent PLAYER UI layout (Commander-equivalent) ───────
+            const PANEL_COL_DEFAULTS={time:145,world:55,by:120,byAlliance:95,x:48,y:48,id:105,mark:75,type:115,level:55,name:150,alliance:115,priority:70,notes:170};
+            function panelPrefsKey(){
+                return "MALY_BASETAG_PLAYER_UI_V1_"+String(FORCE_WORLD_ID)+"_"+String(myPlayerName||"player").toLowerCase();
+            }
+            function loadPanelPrefs(){
+                try{return JSON.parse(localStorage.getItem(panelPrefsKey())||"{}");}catch(e){return {};}
+            }
+            function savePanelPrefsPatch(patch){
+                try{
+                    const p=loadPanelPrefs();
+                    Object.keys(patch||{}).forEach(function(k){p[k]=patch[k];});
+                    localStorage.setItem(panelPrefsKey(),JSON.stringify(p));
+                }catch(e){}
+            }
+            function savePanelBounds(w){
+                try{
+                    if(!w||typeof w.getBounds!=="function")return;
+                    const b=w.getBounds(); if(!b)return;
+                    savePanelPrefsPatch({window:{left:Number(b.left)||0,top:Number(b.top)||0,width:Number(b.width)||1020,height:Number(b.height)||680}});
+                }catch(e){}
+            }
+
             // ── Open Board ────────────────────────────────────────────────
             // Firefox-safe opener: close Qooxdoo menus first and open the window
             // on the next event-loop tick. This avoids menu/window event conflicts.
@@ -1056,21 +1079,35 @@
 
                 const win=new qx.ui.window.Window("TA BaseTag PLAYER by Maly");
                 try { win.setIcon("data:image/png;base64,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"); } catch(e) { console.log("[BaseTag PLAYER] title icon:",e); }
-                win.set({width:1020,height:680,allowMaximize:true,showMinimize:false,contentPadding:0,backgroundColor:"#080b14"});
+                const panelPrefs=loadPanelPrefs();
+                const savedWin=panelPrefs.window||{};
+                const initialW=Math.max(760,Number(savedWin.width)||1020);
+                const initialH=Math.max(500,Number(savedWin.height)||680);
+                win.set({width:initialW,height:initialH,allowMaximize:true,showMinimize:false,contentPadding:0,backgroundColor:"#080b14"});
                 win.setLayout(new qx.ui.layout.VBox(0));
 
-                // qx.ui.window.Window powinien być dzieckiem Desktopu.
-                // Firefox jest bardziej rygorystyczny niż Chrome przy dodawaniu Window bezpośrednio do Root.
-                let host = null;
-                try {
-                    if (typeof app.getDesktop === "function") host = app.getDesktop();
-                } catch (e) {}
-                if (!host) {
-                    try {
-                        if (typeof app.getRoot === "function") host = app.getRoot();
-                    } catch (e) {}
+                try { if(typeof win.setUseMoveFrame==="function") win.setUseMoveFrame(true); } catch(e) {}
+                try { if(typeof win.setUseResizeFrame==="function") win.setUseResizeFrame(true); } catch(e) {}
+
+                let panelBoundsSaveTimer=null;
+                function schedulePanelBoundsSave(){
+                    if(panelBoundsSaveTimer)clearTimeout(panelBoundsSaveTimer);
+                    panelBoundsSaveTimer=setTimeout(function(){panelBoundsSaveTimer=null;savePanelBounds(win);},700);
                 }
-                if (!host || typeof host.add !== "function") throw new Error("No Qooxdoo window host available");
+                win.addListener("move",schedulePanelBoundsSave);
+                win.addListener("resize",schedulePanelBoundsSave);
+
+                // Same root-cause protection as the latest Commander:
+                // floating window only on TA Desktop, never on application Root.
+                let host=null;
+                try { if(typeof app.getDesktop==="function") host=app.getDesktop(); } catch(e) {}
+                if(!host || typeof host.add!=="function"){
+                    throw new Error("BaseTag: game Desktop not ready; refusing Root fallback to protect game viewport.");
+                }
+                try {
+                    const hostEl=host.getContentElement&&host.getContentElement();
+                    if(hostEl&&typeof hostEl.setStyle==="function")hostEl.setStyle("overflow","hidden");
+                } catch(e) {}
 
                 host.add(win);
                 panel=win;
@@ -1137,10 +1174,15 @@
 
                 // ── BaseTag page ────────────────────────────────────────
                 const toolbar=new qx.ui.container.Composite(new qx.ui.layout.HBox(6)); toolbar.set({padding:[5,10],backgroundColor:"#0a0f1e"});
-                let currentFilter="ALL"; let contentArea=null;
-                let sortColumn="time", sortDirection=-1;
-                let currentPage=1;
-                let pageSize=100;
+                let currentFilter=String(panelPrefs.filter||"ALL").toUpperCase(); let contentArea=null;
+                if(["ALL","FAST","KILL","IGNORE","MEMBER","SIM"].indexOf(currentFilter)===-1)currentFilter="ALL";
+                let sortColumn=panelPrefs.sortColumn||"time", sortDirection=Number(panelPrefs.sortDirection)||-1;
+                let columnWidths=Object.assign({},PANEL_COL_DEFAULTS,panelPrefs.columns||{});
+                let columnRuntimeWidgets={};
+                function rememberColumns(){savePanelPrefsPatch({columns:columnWidths});}
+                let currentPage=Math.max(1,Number(panelPrefs.page)||1);
+                let pageSize=Number(panelPrefs.pageSize)||100;
+                if([50,100,200].indexOf(pageSize)===-1)pageSize=100;
                 let pagerInfo=null, btnPrevPage=null, btnNextPage=null, pageSizeSelect=null;
 
                 function sortableValue(m,col){
@@ -1200,6 +1242,11 @@
         btnMember.addListener("execute",function(){setFilter("MEMBER",btnMember);});
         btnSim.addListener("execute",function(){setFilter("SIM",btnSim);});
 
+        // Restore saved filter highlight without resetting saved page.
+        [btnAll,btnFast,btnKill,btnIgnore,btnMember,btnSim].forEach(function(b){b.setBackgroundColor("#1e293b");b.setTextColor("#cbd5e1");});
+        const restoredFilterBtn=currentFilter==="FAST"?btnFast:currentFilter==="KILL"?btnKill:currentFilter==="IGNORE"?btnIgnore:currentFilter==="MEMBER"?btnMember:currentFilter==="SIM"?btnSim:btnAll;
+        restoredFilterBtn.setBackgroundColor("#0a2a4a"); restoredFilterBtn.setTextColor("#00ccff");
+
         btnAll.setBackgroundColor("#0a2a4a");
 
         toolbar.add(btnAll);
@@ -1245,11 +1292,11 @@
                     const it=new qx.ui.form.ListItem(String(v)); it.setModel(v); pageSizeSelect.add(it);
                     if(v===pageSize)pageSizeSelect.setSelection([it]);
                 });
-                btnPrevPage.addListener("execute",function(){if(currentPage>1){currentPage--;rebuildContent();}});
-                btnNextPage.addListener("execute",function(){currentPage++;rebuildContent();});
+                btnPrevPage.addListener("execute",function(){if(currentPage>1){currentPage--;savePanelPrefsPatch({page:currentPage});rebuildContent();}});
+                btnNextPage.addListener("execute",function(){currentPage++;savePanelPrefsPatch({page:currentPage});rebuildContent();});
                 pageSizeSelect.addListener("changeSelection",function(){
                     const s=pageSizeSelect.getSelection()[0]; if(!s)return;
-                    pageSize=Number(s.getModel())||100; currentPage=1; rebuildContent();
+                    pageSize=Number(s.getModel())||100; currentPage=1; savePanelPrefsPatch({pageSize:pageSize,page:1}); rebuildContent();
                 });
                 pagerBar.add(btnPrevPage); pagerBar.add(btnNextPage); pagerBar.add(pagerInfo);
                 const pagerFlex=new qx.ui.core.Spacer(); pagerBar.add(pagerFlex,{flex:1});
@@ -1273,10 +1320,12 @@
 
                 win.add(pageMarks,{flex:1});
                 win.open();
-                try { win.center(); } catch (e) {}
                 try { win.show(); } catch (e) {}
                 try { win.setActive(true); } catch (e) {}
-                try { win.moveTo(Math.max(10, Math.floor((window.innerWidth-1020)/2)), Math.max(40, Math.floor((window.innerHeight-680)/2))); } catch (e) {}
+                try {
+                    if(Number.isFinite(Number(savedWin.left))&&Number.isFinite(Number(savedWin.top))) win.moveTo(Number(savedWin.left),Number(savedWin.top));
+                    else win.moveTo(Math.max(10,Math.floor((window.innerWidth-initialW)/2)),Math.max(40,Math.floor((window.innerHeight-initialH)/2)));
+                } catch (e) {}
 
                 // Build marks content
                 function priSort(a,b){return ({HIGH:0,MED:1,LOW:2}[a.priority]??1)-({HIGH:0,MED:1,LOW:2}[b.priority]??1);}
@@ -1294,6 +1343,7 @@
                     const totalPages=Math.max(1,Math.ceil(sorted.length/pageSize));
                     if(currentPage>totalPages)currentPage=totalPages;
                     if(currentPage<1)currentPage=1;
+                    savePanelPrefsPatch({page:currentPage});
                     try{pagerInfo.setValue("Page "+currentPage+" / "+totalPages+" · "+sorted.length+" rows");}catch(e){}
                     try{btnPrevPage.setEnabled(currentPage>1);}catch(e){}
                     try{btnNextPage.setEnabled(currentPage<totalPages);}catch(e){}
@@ -1301,34 +1351,48 @@
                     const pageRows=sorted.slice((currentPage-1)*pageSize,currentPage*pageSize);
                     // Tabs above already filter FAST/KILL/IGNORE/MEMBER/SIM.
                     // One flat table, matching Google Sheet field order.
+                    columnRuntimeWidgets={};
                     const hdrRow=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
                     hdrRow.set({backgroundColor:"#0a0f1e",padding:[2,6]});
 
-                    function hdrCell(txt,w,col){
+                    function registerColumnWidget(col,w){
+                        if(!columnRuntimeWidgets[col])columnRuntimeWidgets[col]=[];
+                        columnRuntimeWidgets[col].push(w);
+                    }
+                    function applyColumnWidth(col,width){
+                        width=Math.max(36,Math.min(500,Math.round(width)));
+                        columnWidths[col]=width;
+                        (columnRuntimeWidgets[col]||[]).forEach(function(w){try{w.setWidth(width);}catch(e){}});
+                    }
+                    function eventX(e){try{if(typeof e.getDocumentLeft==="function")return e.getDocumentLeft();if(typeof e.getScreenLeft==="function")return e.getScreenLeft();}catch(ex){}return 0;}
+                    function hdrCell(txt,col){
+                        const wrap=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
+                        wrap.set({width:Number(columnWidths[col])||PANEL_COL_DEFAULTS[col]||80,height:26});
+                        registerColumnWidget(col,wrap);
                         const bt=new qx.ui.form.Button(txt+(sortColumn===col?(sortDirection===1?" ▲":" ▼"):""));
-                        bt.set({appearance:"button-standard-nod",backgroundColor:"#0a0f1e",textColor:sortColumn===col?"#00ccff":"#1e3a5a",width:w,height:26,padding:[0,3]});
+                        bt.set({appearance:"button-standard-nod",backgroundColor:"#0a0f1e",textColor:sortColumn===col?"#00ccff":"#64748b",height:26,padding:[0,3]});
                         bt.addListener("execute",function(){
-                            if(sortColumn===col) sortDirection*=-1;
-                            else {sortColumn=col;sortDirection=(col==="time"||col==="world"||col==="x"||col==="y"||col==="level")?-1:1;}
+                            if(sortColumn===col)sortDirection*=-1;
+                            else{sortColumn=col;sortDirection=(col==="time"||col==="world"||col==="x"||col==="y"||col==="level")?-1:1;}
+                            savePanelPrefsPatch({sortColumn:sortColumn,sortDirection:sortDirection});
                             rebuildContent();
                         });
-                        hdrRow.add(bt);
+                        wrap.add(bt,{flex:1});
+                        const grip=new qx.ui.core.Widget();
+                        grip.set({width:5,height:26,cursor:"col-resize",backgroundColor:"#263449"});
+                        let dragging=false,startX=0,startW=0;
+                        grip.addListener("pointerdown",function(e){dragging=true;startX=eventX(e);startW=Number(columnWidths[col])||80;try{grip.capture();e.stopPropagation();}catch(ex){}});
+                        grip.addListener("pointermove",function(e){if(!dragging)return;applyColumnWidth(col,startW+(eventX(e)-startX));try{e.stopPropagation();}catch(ex){}});
+                        function finishGrip(e){if(!dragging)return;dragging=false;rememberColumns();try{grip.releaseCapture();if(e)e.stopPropagation();}catch(ex){}}
+                        grip.addListener("pointerup",finishGrip); grip.addListener("losecapture",finishGrip);
+                        wrap.add(grip); hdrRow.add(wrap);
                     }
 
-                    hdrCell("time",145,"time");
-                    hdrCell("world",55,"world");
-                    hdrCell("by",120,"by");
-                    hdrCell("byAlliance",95,"byAlliance");
-                    hdrCell("x",48,"x");
-                    hdrCell("y",48,"y");
-                    hdrCell("id",105,"id");
-                    hdrCell("mark",75,"mark");
-                    hdrCell("type",115,"type");
-                    hdrCell("level",55,"level");
-                    hdrCell("name",150,"name");
-                    hdrCell("targetAlliance",115,"alliance");
-                    hdrCell("priority",70,"priority");
-                    hdrCell("notes",170,"notes");
+                    hdrCell("time","time"); hdrCell("world","world"); hdrCell("by","by");
+                    hdrCell("byAlliance","byAlliance"); hdrCell("x","x"); hdrCell("y","y");
+                    hdrCell("id","id"); hdrCell("mark","mark"); hdrCell("type","type");
+                    hdrCell("level","level"); hdrCell("name","name"); hdrCell("targetAlliance","alliance");
+                    hdrCell("priority","priority"); hdrCell("notes","notes");
                     const delHdr=new qx.ui.basic.Label("Delete");
                     delHdr.set({textColor:"#1e3a5a",width:55,font:"bold",alignY:"middle"});
                     hdrRow.add(delHdr);
@@ -1336,32 +1400,30 @@
 
                     pageRows.forEach(function(m,idx){
                         const isMember=(m.action==="MEMBER"||m.mark==="MEMBER");
+                        // Same subdued alternating rows as Commander; KILL remains subtly red.
                         const rowBg=m.action==="KILL"?(idx%2===0?"#140808":"#110606"):(idx%2===0?"#0f1105":"#0d0f04");
                         const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
                         row.set({backgroundColor:rowBg,padding:[3,6],cursor:"pointer"});
                         row.setToolTipText("Click row to center map on ["+m.x+":"+m.y+"]");
                         (function(cx,cy){row.addListener("click",function(){jumpToMapCoords(cx,cy);});})(m.x,m.y);
 
-                        function cell(txt,w,color){
+                        function cell(txt,col,color){
                             const l=new qx.ui.basic.Label(esc(String(txt==null?"":txt)));
-                            l.set({textColor:color||"#c8d8e8",width:w,alignY:"middle",height:24});
-                            row.add(l);
+                            l.set({textColor:color||"#c8d8e8",width:Number(columnWidths[col])||PANEL_COL_DEFAULTS[col]||80,alignY:"middle",height:24});
+                            registerColumnWidget(col,l); row.add(l);
                         }
 
-                        cell(m.time||"",145,"#64748b");
-                        cell(m.world||FORCE_WORLD_ID,55,"#64748b");
-                        cell(m.by||"",120,"#64748b");
-                        cell(m.byAlliance||"",95,"#64748b");
-                        cell(m.x,48,"#94a3b8");
-                        cell(m.y,48,"#94a3b8");
-                        cell(m.id||"",105,"#475569");
-                        cell(m.action||m.mark||"",75,m.action==="IGNORE"?"#ef4444":(m.priority==="HIGH"?"#00ccff":"#3b82f6"));
-                        cell(m.type||"",115,"#475569");
-                        cell(m.level||"",55,"#fbbf24");
-                        cell(m.name||"",150,m.simSaved?"#a78bfa":"#c8d8e8");
-                        cell(m.alliance||"",115,"#475569");
-                        cell(m.priority||"",70,"#94a3b8");
-                        cell(isMember?"LOCAL":(m.notes||""),170,isMember?"#ffffff":"#94a3b8");
+                        cell(m.time||"","time","#64748b");
+                        cell(m.world||FORCE_WORLD_ID,"world","#64748b");
+                        cell(m.by||"","by","#64748b");
+                        cell(m.byAlliance||"","byAlliance","#64748b");
+                        cell(m.x,"x","#94a3b8"); cell(m.y,"y","#94a3b8");
+                        cell(m.id||"","id","#475569");
+                        cell(m.action||m.mark||"","mark",m.action==="IGNORE"?"#ef4444":(m.priority==="HIGH"?"#00ccff":"#3b82f6"));
+                        cell(m.type||"","type","#475569"); cell(m.level||"","level","#fbbf24");
+                        cell(m.name||"","name",m.simSaved?"#a78bfa":"#c8d8e8");
+                        cell(m.alliance||"","alliance","#475569"); cell(m.priority||"","priority","#94a3b8");
+                        cell(isMember?"LOCAL":(m.notes||""),"notes",isMember?"#ffffff":"#94a3b8");
 
                         const deleteCell=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
                         deleteCell.set({width:55,alignY:"middle"});
