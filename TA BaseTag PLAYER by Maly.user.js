@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.24
+// @version      1.25
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -484,12 +484,6 @@
 
                         const k = key(this.get_RawX(), this.get_RawY());
 
-                        // ===== SAVED SIM =====
-                        // Local saved simulator layout has visual priority over shared BaseTag colours.
-                        if (mySimSaves[k]) {
-                            return ClientLib.Vis.EBackgroundPlateColor.Black;
-                        }
-
                         // ===== LOCAL MEMBER =====
                         if (memberMarks[k]) {
                             return ClientLib.Vis.EBackgroundPlateColor.White;
@@ -520,7 +514,17 @@
 
                     } catch (e) {}
 
-                    return this.__AFWBv14Orig.apply(this, arguments);
+                    // Let the native game decide first. A genuinely saved attack
+                    // formation is natively Blue. BaseTag KILL has already returned
+                    // Blue above, so only an otherwise-unhandled native Blue reaches
+                    // this point. Convert that native saved-SIM colour to Black.
+                    const nativeColor = this.__AFWBv14Orig.apply(this, arguments);
+                    try {
+                        if (nativeColor === ClientLib.Vis.EBackgroundPlateColor.Blue) {
+                            return ClientLib.Vis.EBackgroundPlateColor.Black;
+                        }
+                    } catch (e) {}
+                    return nativeColor;
                 };
 
             } catch (e) {}
