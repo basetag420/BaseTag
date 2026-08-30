@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.28
+// @version      1.29
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
-// @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
-// @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
+// @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA BaseTag PLAYER by Maly.user.js
+// @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA BaseTag PLAYER by Maly.user.js
 // @match        https://*.alliances.commandandconquer.com/*/index.aspx*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -138,8 +138,8 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.28";
-            const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
+            const BASETAG_LOCAL_VERSION = "1.29";
+            const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA BaseTag PLAYER by Maly.user.js";
 
             function compareVersions(a,b) {
                 const aa=String(a||"0").split(".").map(function(x){return parseInt(x,10)||0;});
@@ -167,6 +167,7 @@
                     onload:function(r){
                         try{
                             const text=String(r.responseText||"");
+                            if(Number(r.status)!==200) throw new Error("GitHub HTTP "+r.status);
                             const m=text.match(/^[ \t]*\/\/[ \t]*@version[ \t]+([^\s]+)[ \t]*$/mi);
                             if(!m) throw new Error("No @version in GitHub file");
                             const remote=String(m[1]).trim();
@@ -185,7 +186,7 @@
                                 btn.__baseTagUpdateReady=false;
                             }
                         }catch(e){
-                            try{statusLbl.setValue("Update check error");statusLbl.setTextColor("#ef4444");btn.setLabel("CHECK UPDATE");btn.setEnabled(true);}catch(ex){}
+                            try{statusLbl.setValue("Update error: "+String(e.message||e));statusLbl.setTextColor("#ef4444");btn.setLabel("CHECK UPDATE");btn.setEnabled(true);}catch(ex){}
                         }
                     },
                     onerror:function(){try{statusLbl.setValue("GitHub unavailable");statusLbl.setTextColor("#ef4444");btn.setLabel("CHECK UPDATE");btn.setEnabled(true);}catch(e){}},
@@ -1271,8 +1272,17 @@
                 btnUpdate.addListener("execute",function(){
                     if(btnUpdate.__baseTagUpdateReady){
                         // Open the exact .user.js RAW URL. Tampermonkey handles install/update.
-                        try{pageWindow.open(BASETAG_RAW_UPDATE_URL,"_blank");}
-                        catch(e){window.open(BASETAG_RAW_UPDATE_URL,"_blank");}
+                        try{
+                            const a=document.createElement("a");
+                            a.href=BASETAG_RAW_UPDATE_URL+"?install="+Date.now();
+                            a.target="_blank";
+                            a.rel="noopener";
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                        }catch(e){
+                            try{pageWindow.open(BASETAG_RAW_UPDATE_URL+"?install="+Date.now(),"_blank");}catch(ex){}
+                        }
                         return;
                     }
                     checkBaseTagUpdate(btnUpdate,updateStatus);
