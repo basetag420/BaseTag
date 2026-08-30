@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.23
-// @description  Player BaseTag — password protected, clean startup
+// @version      1.24
+// @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @match        https://*.alliances.commandandconquer.com/*/index.aspx*
@@ -484,6 +484,12 @@
 
                         const k = key(this.get_RawX(), this.get_RawY());
 
+                        // ===== SAVED SIM =====
+                        // Local saved simulator layout has visual priority over shared BaseTag colours.
+                        if (mySimSaves[k]) {
+                            return ClientLib.Vis.EBackgroundPlateColor.Black;
+                        }
+
                         // ===== LOCAL MEMBER =====
                         if (memberMarks[k]) {
                             return ClientLib.Vis.EBackgroundPlateColor.White;
@@ -542,9 +548,20 @@
 
                     const sub = ch[0];
 
-                    sub.getChildren().forEach(function (c) {
+                    // Snapshot first: getChildren() may be a live collection.
+                    const existingMenuChildren = sub.getChildren().slice();
+                    existingMenuChildren.forEach(function (c) {
                         try {
-                            if (c.getUserData && c.getUserData("AFWBBtn")) {
+                            let remove = false;
+                            if (c.getUserData && c.getUserData("AFWBBtn")) remove = true;
+
+                            let lbl = "";
+                            try {
+                                if (typeof c.getLabel === "function") lbl = String(c.getLabel() || "");
+                            } catch (e) {}
+                            if (lbl === "✖ REMOVE" || lbl === "BaseTag »") remove = true;
+
+                            if (remove) {
                                 sub.remove(c);
                                 c.dispose();
                             }
@@ -563,7 +580,6 @@
 
                     const am = new qx.ui.menu.Menu();
 
-                    // ---------- Member ----------
                     const memberBtn = new qx.ui.menu.Button("Mark My Base");
                     memberBtn.setTextColor("#ffffff");
                     memberBtn.addListener("execute", function () {
@@ -588,6 +604,28 @@
 
                     markBtn.setMenu(am);
                     sub.add(markBtn);
+
+                    // Quick remove. PLAYER can remove only the local MEMBER mark.
+                    const quickRemoveBtn = new qx.ui.form.Button("✖ REMOVE");
+                    quickRemoveBtn.setUserData("AFWBBtn", true);
+                    quickRemoveBtn.set({
+                        appearance: "button-standard-nod",
+                        width: 115,
+                        height: 26,
+                        backgroundColor: "#991b1b",
+                        textColor: "#ffffff"
+                    });
+                    quickRemoveBtn.setToolTipText("Remove my local MEMBER mark");
+                    quickRemoveBtn.addListener("execute", function () {
+                        try {
+                            const target = getMenuObj(menu);
+                            if (!target) return;
+                            removeMarkFromObj(target);
+                        } catch (e) {
+                            console.error("[BaseTag PLAYER] quick REMOVE:", e);
+                        }
+                    });
+                    sub.add(quickRemoveBtn);
 
                 } catch (e) {
                     console.log("[BaseTag v14] menu:", e);
@@ -750,7 +788,21 @@
                 marks[key(x,y)]=m; saveLocal(STORAGE_KEY,marks); syncUpsert(m); patchHasAttackFormation(); refreshMarkedObjects();
             }
         function removeMarkFromObj(obj) {
-            console.log("[BaseTag PLAYER] remove blocked");
+            try {
+                const x = obj.get_RawX();
+                const y = obj.get_RawY();
+                const k = key(x, y);
+
+                // PLAYER quick REMOVE removes ONLY the player's local MEMBER mark.
+                // Saved SIM state and shared FAST/KILL/IGNORE markers are untouched.
+                if (memberMarks[k]) {
+                    delete memberMarks[k];
+                    saveLocal(MEMBER_STORAGE_KEY, memberMarks);
+                    refreshMarkedObjects();
+                }
+            } catch (e) {
+                console.error("[BaseTag PLAYER] remove local MEMBER mark:", e);
+            }
         }
 
             // ── Helpers ───────────────────────────────────────────────────
