@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.22
+// @version      1.23
 // @description  Player BaseTag — password protected, clean startup
+// @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
+// @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @match        https://*.alliances.commandandconquer.com/*/index.aspx*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
