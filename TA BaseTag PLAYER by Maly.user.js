@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.32
+// @version      1.33
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -71,74 +71,9 @@
             let marks        = loadLocal(STORAGE_KEY);
             let mySimSaves   = loadLocal(SIM_STORAGE_KEY);
 
-            // Native saved attack formations (the game's own SIM/save system).
-            // O(1) lookup on the hot colour path; state is learned from the game's
-            // own HasAttackFormation calls, plus one lazy scan per target if needed.
-            const nativeSimByCity = Object.create(null);
-            const nativeSimCounts = Object.create(null);
-            const nativeSimKnownTargets = Object.create(null);
-
-            function setNativeSimState(cityId, targetId, hasSim) {
-                cityId = String(cityId);
-                targetId = String(targetId);
-                let cityMap = nativeSimByCity[cityId];
-                if (!cityMap) cityMap = nativeSimByCity[cityId] = Object.create(null);
-
-                const prev = cityMap[targetId] === true;
-                const next = hasSim === true;
-                if (prev === next) {
-                    nativeSimKnownTargets[targetId] = true;
-                    return;
-                }
-
-                cityMap[targetId] = next;
-                let count = nativeSimCounts[targetId] || 0;
-                count += next ? 1 : -1;
-                if (count < 0) count = 0;
-                nativeSimCounts[targetId] = count;
-                nativeSimKnownTargets[targetId] = true;
-            }
-
-            function primeNativeSimTarget(targetId) {
-                targetId = String(targetId || "");
-                if (!targetId || nativeSimKnownTargets[targetId]) return;
-                nativeSimKnownTargets[targetId] = true;
-
-                try {
-                    const all = ClientLib.Data.MainData.GetInstance().get_Cities().get_AllCities().d;
-                    for (const cityId in all) {
-                        const city = all[cityId];
-                        if (!city) continue;
-
-                        let fn = null;
-                        if (typeof city.__AFWBv14HAFOrig === "function") fn = city.__AFWBv14HAFOrig;
-                        else if (typeof city.HasAttackFormation === "function") fn = city.HasAttackFormation;
-                        if (!fn) continue;
-
-                        let nativeHas = false;
-                        try { nativeHas = !!fn.call(city, targetId); } catch (e) {}
-                        setNativeSimState(cityId, targetId, nativeHas);
-                    }
-                } catch (e) {}
-            }
-
-            function isNativeSimTarget(targetId) {
-                targetId = String(targetId || "");
-                if (!targetId) return false;
-                if (!nativeSimKnownTargets[targetId]) primeNativeSimTarget(targetId);
-                return (nativeSimCounts[targetId] || 0) > 0;
-            }
-            let memberMarks = loadLocal(MEMBER_STORAGE_KEY);
-            let panel        = null;
-            let scriptsAdded = false;
-            let apiDown      = false;
-            let syncInProgress = false;
-            let myPlayerName = "";
-            let shiftPending = [];
-            let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.32";
+            const BASETAG_LOCAL_VERSION = "1.33";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -240,6 +175,7 @@
         }, 5000);
                 try { hookNativePlateColor(); } catch(e){ console.log(e); }
         try { hookRegionMenu(); } catch(e){ console.log(e); }
+        try { hookSimSave(); } catch(e){ console.log(e); }
         try { hookShiftClick(); } catch(e){ console.log(e); }
 
         // Dodaj BaseTag do menu Scripts od razu po starcie.
@@ -597,15 +533,6 @@
                     try {
 
                         const k = key(this.get_RawX(), this.get_RawY());
-                        const targetId = String(getId(this) || "");
-
-                        // ===== NATIVE SAVED SIM =====
-                        // Saved simulation must be visually distinguishable from BaseTag KILL.
-                        // This check is O(1) after the first encounter with a target.
-                        if (targetId && isNativeSimTarget(targetId)) {
-                            return ClientLib.Vis.EBackgroundPlateColor.Black;
-                        }
-
                         // ===== LOCAL MEMBER =====
                         if (memberMarks[k]) {
                             return ClientLib.Vis.EBackgroundPlateColor.White;
@@ -643,29 +570,11 @@
         }
             function patchHasAttackFormation() {
                 try {
-                    const cities = ClientLib.Data.MainData.GetInstance().get_Cities().get_AllCities().d;
-                    for (let id in cities) {
-                        const c = cities[id];
-                        if (!c || c.__AFWBv14HAF || typeof c.HasAttackFormation !== "function") continue;
-
-                        c.__AFWBv14HAF = true;
-                        c.__AFWBv14HAFOrig = c.HasAttackFormation;
-
-                        c.HasAttackFormation = function(tid) {
-                            let nativeHas = false;
-                            try {
-                                nativeHas = !!c.__AFWBv14HAFOrig.apply(c, arguments);
-                                setNativeSimState(id, tid, nativeHas);
-                            } catch (e) {}
-
-                            // BaseTag may still force "has formation" for marked targets,
-                            // but that forced state is NOT counted as a native saved SIM.
-                            try { if (isMarkedById(tid)) return true; } catch (e) {}
-                            return nativeHas;
-                        };
-                    }
+                    const cities=ClientLib.Data.MainData.GetInstance().get_Cities().get_AllCities().d;
+                    for(let id in cities) { const c=cities[id]; if(!c||c.__AFWBv14HAF||typeof c.HasAttackFormation!=="function") continue; c.__AFWBv14HAF=true; c.__AFWBv14HAFOrig=c.HasAttackFormation; c.HasAttackFormation=function(tid){try{if(isMarkedById(tid)) return true;}catch(e){} return c.__AFWBv14HAFOrig.apply(c,arguments);}; }
                 } catch(e){}
             }
+
             function hookRegionMenu() {
             const menu = webfrontend.gui.region.RegionCityMenu.getInstance();
 
