@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.34
+// @version      1.35
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -81,7 +81,7 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.34";
+            const BASETAG_LOCAL_VERSION = "1.35";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
