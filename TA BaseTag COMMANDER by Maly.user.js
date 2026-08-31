@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.68
+// @version      2.71
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.68";
+            const BASETAG_LOCAL_VERSION = "2.71";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -481,33 +481,66 @@
                 .map(k => encodeURIComponent(k) + "=" + encodeURIComponent(params[k]))
                 .join("&");
 
+            let finished = false;
+            function finish(data) {
+                if (finished) return;
+                finished = true;
+                apiDown = !data;
+                if (cb) cb(data);
+            }
+
+            function parseResponse(res) {
+                try {
+                    return JSON.parse(String((res && res.responseText) || ""));
+                } catch(e) {
+                    console.error("BaseTag API JSON ERROR:", e, "HTTP", res && res.status);
+                    return null;
+                }
+            }
+
+            function sendGetFallback() {
+                if (finished) return;
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    timeout: 30000,
+                    onload: function(res) {
+                        const data = parseResponse(res);
+                        if (data) return finish(data);
+                        console.error("BaseTag API GET fallback returned invalid response.");
+                        finish(null);
+                    },
+                    onerror: function(err) {
+                        console.error("BaseTag API GET fallback ERROR:", err);
+                        finish(null);
+                    },
+                    ontimeout: function(err) {
+                        console.error("BaseTag API GET fallback TIMEOUT:", err);
+                        finish(null);
+                    }
+                });
+            }
+
+            // Keep the long-working Commander transport as primary.
+            // If a browser/Tampermonkey environment rejects the Apps Script POST/redirect,
+            // retry the same request once with the PLAYER-style GET transport.
             GM_xmlhttpRequest({
-                // GET is deliberate: Google Apps Script's /exec redirects, and Opera/MV3
-                // has had browser-specific GM_xmlhttpRequest behavior around redirects/POST.
-                // All BaseTag parameters are already in the query string.
-                method: "GET",
+                method: "POST",
                 url: url,
+                data: "",
                 timeout: 30000,
                 onload: function(res) {
-                    let data = null;
-                    try {
-                        data = JSON.parse(res.responseText);
-                    } catch(e) {
-                        console.error("BaseTag API JSON ERROR:", e, "HTTP", res && res.status);
-                    }
-
-                    apiDown = false;
-                    if (cb) cb(data);
+                    const data = parseResponse(res);
+                    if (data) return finish(data);
+                    sendGetFallback();
                 },
                 onerror: function(err) {
-                    console.error("BaseTag API REQUEST ERROR:", err);
-                    apiDown = true;
-                    if (cb) cb(null);
+                    console.error("BaseTag API POST ERROR; retrying with GET:", err);
+                    sendGetFallback();
                 },
                 ontimeout: function(err) {
-                    console.error("BaseTag API REQUEST TIMEOUT:", err);
-                    apiDown = true;
-                    if (cb) cb(null);
+                    console.error("BaseTag API POST TIMEOUT; retrying with GET:", err);
+                    sendGetFallback();
                 }
             });
         }
@@ -2037,7 +2070,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.68 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.70 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
@@ -2081,17 +2114,13 @@
                     const loadingLbl=new qx.ui.basic.Label("Loading alliance members and access list…"); loadingLbl.set({textColor:"#334155",padding:10}); aVbox.add(loadingLbl);
                     aScroll.add(aVbox); pageAccess.add(aScroll,{flex:1});
 
-                    // Load ALLOWED / PENDING / BANNED in parallel.
-                    // Previously these 3 Google Apps Script requests were chained,
-                    // so the panel waited for request A, then B, then C.
+                    // One accessSnapshot response contains ALLOWED / PENDING / BANNED.
+                    // Render it once; no legacy three-reply gate.
                     let accessAllowedData=null;
                     let accessPendingData=null;
                     let accessBannedData=null;
-                    let accessReplies=0;
 
                     function finishAccessLoad() {
-                        accessReplies++;
-                        if(accessReplies<3) return;
 
                         const data=accessAllowedData;
                         const pendingData=accessPendingData;
@@ -2244,8 +2273,7 @@
                             accessPendingData=d||{ok:false};
                             accessBannedData=d||{ok:false};
                         }
-                        // Reuse the already-tested render path unchanged.
-                        finishAccessLoad(); finishAccessLoad(); finishAccessLoad();
+                        finishAccessLoad();
                     });
                 }
 
