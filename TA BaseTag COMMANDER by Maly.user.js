@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.67
+// @version      2.68
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.67";
+            const BASETAG_LOCAL_VERSION = "2.68";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -482,22 +482,30 @@
                 .join("&");
 
             GM_xmlhttpRequest({
-            method: "POST",
-            url: url,
-            data: "",
+                // GET is deliberate: Google Apps Script's /exec redirects, and Opera/MV3
+                // has had browser-specific GM_xmlhttpRequest behavior around redirects/POST.
+                // All BaseTag parameters are already in the query string.
+                method: "GET",
+                url: url,
+                timeout: 30000,
                 onload: function(res) {
                     let data = null;
                     try {
                         data = JSON.parse(res.responseText);
                     } catch(e) {
-                        console.error("JSON ERROR:", e);
+                        console.error("BaseTag API JSON ERROR:", e, "HTTP", res && res.status);
                     }
 
                     apiDown = false;
                     if (cb) cb(data);
                 },
                 onerror: function(err) {
-                    console.error("REQUEST ERROR:", err);
+                    console.error("BaseTag API REQUEST ERROR:", err);
+                    apiDown = true;
+                    if (cb) cb(null);
+                },
+                ontimeout: function(err) {
+                    console.error("BaseTag API REQUEST TIMEOUT:", err);
                     apiDown = true;
                     if (cb) cb(null);
                 }
@@ -2029,7 +2037,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.67 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.68 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
