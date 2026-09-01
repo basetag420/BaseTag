@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.71
+// @version      2.72
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.71";
+            const BASETAG_LOCAL_VERSION = "2.72";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -750,7 +750,14 @@
             }
 
             // ── Plate color ───────────────────────────────────────────────
-            function hookNativePlateColor() { patchPlateClass(ClientLib.Vis.Region.RegionCity); patchPlateClass(ClientLib.Vis.Region.RegionNPCBase); patchHasAttackFormation(); }
+            function hookNativePlateColor() {
+                patchPlateClass(ClientLib.Vis.Region.RegionCity);
+                patchPlateClass(ClientLib.Vis.Region.RegionNPCBase);
+                // Ruins are not colored by BaseTag. This lightweight hook only lets us
+                // positively confirm that a marked Forgotten base was destroyed.
+                try { patchForgottenCleanupClass(ClientLib.Vis.Region.RegionRuin); } catch(e) {}
+                patchHasAttackFormation();
+            }
             function findColorMethod(proto) {
                 if (!proto) return null;
 
@@ -820,6 +827,56 @@
                 return null;
             }
 
+            function isConfirmedNonForgottenObject(o) {
+                try {
+                    const t = getObjType(o);
+                    return t === "Player Base" || t === "Camp/Outpost" || t === "POI" || t === "Ruin";
+                } catch(e) {}
+                return false;
+            }
+
+            function autoCleanupForgottenMarkForObj(o) {
+                try {
+                    if (!o || typeof o.get_RawX !== "function" || typeof o.get_RawY !== "function") return false;
+                    const k = key(o.get_RawX(), o.get_RawY());
+                    const m = marks[k];
+                    if (!m || String(m.type || "") !== "Forgotten Base") return false;
+                    if (!isConfirmedNonForgottenObject(o)) return false;
+
+                    // Positive evidence only: the same coordinate is now a known non-Forgotten
+                    // object (e.g. Ruin after kill or Player Base after a move). Never delete on
+                    // null/unloaded/unknown data.
+                    delete marks[k];
+                    delete mySimSaves[k];
+                    saveLocal(STORAGE_KEY, marks);
+                    saveLocal(SIM_STORAGE_KEY, mySimSaves);
+                    syncDelete(m);
+                    console.log("[BaseTag] removed stale Forgotten marker at", m.x + ":" + m.y, "now", getObjType(o));
+                    return true;
+                } catch(e) {}
+                return false;
+            }
+
+            function patchForgottenCleanupClass(cls) {
+                try {
+                    if (!cls || !cls.prototype || cls.prototype.__AFWBForgottenCleanup) return;
+                    const proto = cls.prototype;
+                    // Ruins do not need BaseTag colouring. Hook their normal UI/visual update
+                    // only to observe a positive "this coordinate is now a Ruin" event.
+                    const mn = typeof proto.UiUpdate === "function" ? "UiUpdate"
+                             : typeof proto.VisUpdate === "function" ? "VisUpdate"
+                             : findColorMethod(proto);
+                    if (!mn) return;
+                    const orig = proto[mn];
+                    if (typeof orig !== "function") return;
+                    proto.__AFWBForgottenCleanup = true;
+                    proto[mn] = function () {
+                        try { autoCleanupForgottenMarkForObj(this); } catch(e) {}
+                        return orig.apply(this, arguments);
+                    };
+                } catch(e) {}
+            }
+
             function patchPlateClass(cls) {
             try {
 
@@ -841,6 +898,10 @@
                     try {
 
                         const k = key(this.get_RawX(), this.get_RawY());
+
+                        // Forgotten markers are removed only when this rendered object
+                        // positively proves that the coordinate is no longer Forgotten.
+                        autoCleanupForgottenMarkForObj(this);
 
                         // ===== LOCAL MEMBER =====
                         if (memberMarks[k]) {
@@ -2070,7 +2131,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.70 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.72 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
