@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.72
+// @version      2.74
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.72";
+            const BASETAG_LOCAL_VERSION = "2.74";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -199,8 +199,21 @@
                 if (!myPlayerName || myPlayerName === "Unknown" || !commanderDeviceToken) return;
 
                 commanderAuthBusy = true;
+                const __commanderAccessDiagStart = Date.now();
+                console.log("[BaseTag COMMANDER ACCESS DIAG] START", {
+                    player: myPlayerName,
+                    world: FORCE_WORLD_ID,
+                    timeoutMs: 70000
+                });
                 apiCall({ action:"commanderAccess" }, function(auth) {
                     commanderAuthBusy = false;
+                    console.log("[BaseTag COMMANDER ACCESS DIAG] END", {
+                        elapsedMs: Date.now() - __commanderAccessDiagStart,
+                        ok: !!(auth && auth.ok),
+                        access: !!(auth && auth.access),
+                        status: auth && auth.status ? String(auth.status) : "",
+                        error: auth && auth.error ? String(auth.error) : ""
+                    });
 
                     if (!auth || !auth.ok) {
                         console.error("[BaseTag Commander] authorization unavailable:", auth);
@@ -468,6 +481,8 @@
 
         function apiCall(params, cb) {
             params = params || {};
+            const diagAction = String(params.action || "unknown");
+            const requestTimeoutMs = diagAction === "commanderAccess" ? 70000 : 30000;
             params.world = FORCE_WORLD_ID;
             params._ = Date.now();
             params.commanderPlayer = myPlayerName || detectPlayerName();
@@ -482,6 +497,22 @@
                 .join("&");
 
             let finished = false;
+            const diagStart = Date.now();
+            function diagLog(method, phase, res, extra) {
+                try {
+                    const text = res && res.responseText != null ? String(res.responseText) : "";
+                    console.log("[BaseTag NET DIAG]", {
+                        action: diagAction,
+                        method: method,
+                        phase: phase,
+                        elapsedMs: Date.now() - diagStart,
+                        status: res && typeof res.status !== "undefined" ? res.status : null,
+                        finalUrl: res && (res.finalUrl || res.responseURL) ? String(res.finalUrl || res.responseURL) : "",
+                        responseLength: text.length,
+                        extra: extra || ""
+                    });
+                } catch(e) {}
+            }
             function finish(data) {
                 if (finished) return;
                 finished = true;
@@ -489,10 +520,13 @@
                 if (cb) cb(data);
             }
 
-            function parseResponse(res) {
+            function parseResponse(res, method) {
                 try {
-                    return JSON.parse(String((res && res.responseText) || ""));
+                    const data = JSON.parse(String((res && res.responseText) || ""));
+                    diagLog(method, "json-ok", res, "");
+                    return data;
                 } catch(e) {
+                    diagLog(method, "json-error", res, String(e && e.message || e));
                     console.error("BaseTag API JSON ERROR:", e, "HTTP", res && res.status);
                     return null;
                 }
@@ -500,21 +534,25 @@
 
             function sendGetFallback() {
                 if (finished) return;
+                const fallbackStart = Date.now();
                 GM_xmlhttpRequest({
                     method: "GET",
                     url: url,
-                    timeout: 30000,
+                    timeout: requestTimeoutMs,
                     onload: function(res) {
-                        const data = parseResponse(res);
+                        diagLog("GET", "onload", res, "fallbackMs=" + (Date.now()-fallbackStart));
+                        const data = parseResponse(res, "GET");
                         if (data) return finish(data);
                         console.error("BaseTag API GET fallback returned invalid response.");
                         finish(null);
                     },
                     onerror: function(err) {
+                        diagLog("GET", "onerror", err, "fallbackMs=" + (Date.now()-fallbackStart));
                         console.error("BaseTag API GET fallback ERROR:", err);
                         finish(null);
                     },
                     ontimeout: function(err) {
+                        diagLog("GET", "ontimeout", err, "fallbackMs=" + (Date.now()-fallbackStart));
                         console.error("BaseTag API GET fallback TIMEOUT:", err);
                         finish(null);
                     }
@@ -528,17 +566,20 @@
                 method: "POST",
                 url: url,
                 data: "",
-                timeout: 30000,
+                timeout: requestTimeoutMs,
                 onload: function(res) {
-                    const data = parseResponse(res);
+                    diagLog("POST", "onload", res, "");
+                    const data = parseResponse(res, "POST");
                     if (data) return finish(data);
                     sendGetFallback();
                 },
                 onerror: function(err) {
+                    diagLog("POST", "onerror", err, "");
                     console.error("BaseTag API POST ERROR; retrying with GET:", err);
                     sendGetFallback();
                 },
                 ontimeout: function(err) {
+                    diagLog("POST", "ontimeout", err, "");
                     console.error("BaseTag API POST TIMEOUT; retrying with GET:", err);
                     sendGetFallback();
                 }
@@ -2131,7 +2172,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.72 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.74 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
