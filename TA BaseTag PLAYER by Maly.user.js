@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.35
+// @version      1.38
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -81,7 +81,7 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.35";
+            const BASETAG_LOCAL_VERSION = "1.37";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -331,6 +331,7 @@
 
         function apiCall(params, cb) {
             params = params || {};
+            const diagAction = String(params.action || "unknown");
             params.world = FORCE_WORLD_ID;
             params._ = Date.now();
 
@@ -341,6 +342,22 @@
             const url = API_URL + "?" + Object.keys(params)
                 .map(k => encodeURIComponent(k) + "=" + encodeURIComponent(params[k]))
                 .join("&");
+            const diagStart = Date.now();
+            function diagLog(phase, res, extra) {
+                try {
+                    const text = res && res.responseText != null ? String(res.responseText) : "";
+                    console.log("[BaseTag NET DIAG]", {
+                        action: diagAction,
+                        method: "GET",
+                        phase: phase,
+                        elapsedMs: Date.now() - diagStart,
+                        status: res && typeof res.status !== "undefined" ? res.status : null,
+                        finalUrl: res && (res.finalUrl || res.responseURL) ? String(res.finalUrl || res.responseURL) : "",
+                        responseLength: text.length,
+                        extra: extra || ""
+                    });
+                } catch(e) {}
+            }
 
             GM_xmlhttpRequest({
                 // GET is deliberate: Google Apps Script's /exec redirects, and Opera/MV3
@@ -350,10 +367,13 @@
                 url: url,
                 timeout: 30000,
                 onload: function(res) {
+                    diagLog("onload", res, "");
                     let data = null;
                     try {
                         data = JSON.parse(res.responseText);
+                        diagLog("json-ok", res, "");
                     } catch(e) {
+                        diagLog("json-error", res, String(e && e.message || e));
                         console.error("BaseTag API JSON ERROR:", e, "HTTP", res && res.status);
                     }
 
@@ -361,11 +381,13 @@
                     if (cb) cb(data);
                 },
                 onerror: function(err) {
+                    diagLog("onerror", err, "");
                     console.error("BaseTag API REQUEST ERROR:", err);
                     apiDown = true;
                     if (cb) cb(null);
                 },
                 ontimeout: function(err) {
+                    diagLog("ontimeout", err, "");
                     console.error("BaseTag API REQUEST TIMEOUT:", err);
                     apiDown = true;
                     if (cb) cb(null);
@@ -430,12 +452,33 @@
         }
         if(!changed) return;
 
+        // Collect only coordinates whose visual marker state may have changed.
+        const changedCoords=Object.create(null);
+        currentKeys.forEach(function(k){
+            const a=marks[k], b=next[k];
+            if(!b || !a ||
+               String(a.id||"")!==String(b.id||"") ||
+               String(a.action||"")!==String(b.action||"") ||
+               String(a.priority||"")!==String(b.priority||"")){
+                changedCoords[k]=true;
+            }
+        });
+        nextKeys.forEach(function(k){
+            const a=marks[k], b=next[k];
+            if(!a || !b ||
+               String(a.id||"")!==String(b.id||"") ||
+               String(a.action||"")!==String(b.action||"") ||
+               String(a.priority||"")!==String(b.priority||"")){
+                changedCoords[k]=true;
+            }
+        });
+
         // Keep the same object identity because other code references `marks`.
         currentKeys.forEach(function(k){ delete marks[k]; });
         nextKeys.forEach(function(k){ marks[k]=next[k]; });
 
         saveLocal(STORAGE_KEY, marks);
-        refreshMarkedObjects();
+        refreshMarkedKeys(Object.keys(changedCoords));
             });
         }
         function syncUpsert(m) {
@@ -541,33 +584,8 @@
                     try {
 
                         const k = key(this.get_RawX(), this.get_RawY());
-                        // ===== LOCAL MEMBER =====
-                        if (memberMarks[k]) {
-                            return ClientLib.Vis.EBackgroundPlateColor.White;
-                        }
-
-                        // ===== ALLIANCE =====
-                        const action = getActionForObj(this);
-                        const mark = marks[k];
-
-                        // FAST
-                        if (
-                            action === "KILL" &&
-                            mark &&
-                            mark.priority === "HIGH"
-                        ) {
-                            return ClientLib.Vis.EBackgroundPlateColor.Cyan;
-                        }
-
-                        // KILL
-                        if (action === "KILL") {
-                            return ClientLib.Vis.EBackgroundPlateColor.Blue;
-                        }
-
-                        // IGNORE
-                        if (action === "IGNORE") {
-                            return ClientLib.Vis.EBackgroundPlateColor.Orange;
-                        }
+                        const baseTagColor = plateColorByCoord[k];
+                        if (baseTagColor !== undefined) return baseTagColor;
 
                     } catch (e) {}
 
@@ -860,6 +878,7 @@
             // Fast secondary index: NPC/base ID -> marker.
             // VisUpdate can fire extremely often; never scan all markers from that hot path.
             let marksById = {};
+            let plateColorByCoord = Object.create(null);
 
             function rebuildMarksById(){
                 const next = {};
@@ -872,15 +891,44 @@
                 marksById = next;
             }
 
+            // Precompute BaseTag colours when marker data changes.
+            // The game's plate-colour method is a very hot path, so it must not
+            // repeatedly inspect marker objects, priorities and IDs on every VisUpdate.
+            function rebuildPlateColorIndex(){
+                const next = Object.create(null);
+                try {
+                    for (const k in marks) {
+                        const m=marks[k];
+                        if(!m) continue;
+                        if(m.action==="KILL" && m.priority==="HIGH") next[k]=ClientLib.Vis.EBackgroundPlateColor.Cyan;
+                        else if(m.action==="KILL") next[k]=ClientLib.Vis.EBackgroundPlateColor.Blue;
+                        else if(m.action==="IGNORE") next[k]=ClientLib.Vis.EBackgroundPlateColor.Orange;
+                    }
+                    for (const k in memberMarks) {
+                        // Local MEMBER keeps the same priority it had before: white wins.
+                        next[k]=ClientLib.Vis.EBackgroundPlateColor.White;
+                    }
+                } catch(e) {}
+                plateColorByCoord=next;
+            }
+
             function loadLocal(k){try{return JSON.parse(localStorage.getItem(k)||"{}");}catch(e){return {};}}
             function saveLocal(k,d){
                 localStorage.setItem(k,JSON.stringify(d));
                 // Marker writes are infrequent compared with VisUpdate, so rebuilding here is cheap
                 // and keeps the O(1) ID index always current.
-                try { if(k===STORAGE_KEY) rebuildMarksById(); } catch(e) {}
+                try {
+                    if(k===STORAGE_KEY) {
+                        rebuildMarksById();
+                        rebuildPlateColorIndex();
+                    } else if(k===MEMBER_STORAGE_KEY) {
+                        rebuildPlateColorIndex();
+                    }
+                } catch(e) {}
             }
             function getId(o){try{if(o.get_Id) return o.get_Id();}catch(e){} return "";}
             rebuildMarksById();
+            rebuildPlateColorIndex();
             function getObjName(o){try{if(o.get_Name) return String(o.get_Name());}catch(e){} return "Unknown";}
             function getObjType(o){try{const t=o.get_VisObjectType(),E=ClientLib.Vis.VisObject.EObjectType; if(t===E.RegionCityType) return "Player Base"; if(t===E.RegionNPCBase) return "Forgotten Base"; if(t===E.RegionNPCCamp) return "Camp/Outpost"; if(t===E.RegionPointOfInterest) return "POI"; if(t===E.RegionRuin) return "Ruin";}catch(e){} return "Object";}
             function getAlliance(o){try{if(o.get_AllianceName) return o.get_AllianceName()||"";}catch(e){} return "";}
@@ -911,7 +959,25 @@
             function getWorldObjAt(x,y){try{return ClientLib.Data.MainData.GetInstance().get_World().GetObjectFromPosition(x,y);}catch(e){return null;}}
             function isDeadOrGone(x,y){const w=getWorldObjAt(x,y),v=getVisObjAt(x,y); if(!w&&!v) return false; try{if(v&&v.get_VisObjectType()===ClientLib.Vis.VisObject.EObjectType.RegionRuin) return true;}catch(e){} try{if(w&&w.Type===ClientLib.Data.WorldSector.ObjectType.Ruin) return true;}catch(e){} return false;}
             function cleanDeadMarks(){let ch=false; const del=[]; Object.keys(marks).forEach(function(k){const m=marks[k]; if(isDeadOrGone(m.x,m.y)){del.push(m);delete marks[k];delete mySimSaves[k];ch=true;}}); if(ch){saveLocal(STORAGE_KEY,marks);saveLocal(SIM_STORAGE_KEY,mySimSaves);del.forEach(syncDelete);}}
-            function refreshMarkedObjects(){Object.keys(marks).forEach(function(k){const m=marks[k],o=getVisObjAt(m.x,m.y); if(!o) return; try{if(typeof o.UpdateColor==="function") o.UpdateColor();}catch(e){} try{if(typeof o.UpdateZoom==="function") o.UpdateZoom();}catch(e){} try{if(typeof o.UiUpdate==="function") o.UiUpdate(0);}catch(e){} try{if(typeof o.VisUpdate==="function") o.VisUpdate(0,0,0);}catch(e){}});}
+            function refreshOneMarkedCoord(k){
+                try{
+                    const parts=String(k).split(":");
+                    const x=Number(parts[0]), y=Number(parts[1]);
+                    if(!isFinite(x)||!isFinite(y)) return;
+                    const o=getVisObjAt(x,y); if(!o) return;
+                    try{if(typeof o.UpdateColor==="function") o.UpdateColor();}catch(e){}
+                    try{if(typeof o.UpdateZoom==="function") o.UpdateZoom();}catch(e){}
+                    try{if(typeof o.UiUpdate==="function") o.UiUpdate(0);}catch(e){}
+                    try{if(typeof o.VisUpdate==="function") o.VisUpdate(0,0,0);}catch(e){}
+                }catch(e){}
+            }
+            function refreshMarkedKeys(keys){for(let i=0;i<keys.length;i++) refreshOneMarkedCoord(keys[i]);}
+            function refreshMarkedObjects(){
+                const seen=Object.create(null), keys=[];
+                Object.keys(marks).forEach(function(k){if(!seen[k]){seen[k]=true;keys.push(k);}});
+                Object.keys(memberMarks).forEach(function(k){if(!seen[k]){seen[k]=true;keys.push(k);}});
+                refreshMarkedKeys(keys);
+            }
             function getMenuObj(menu){for(let k in menu){try{const o=menu[k]; if(o&&typeof o.get_RawX==="function"&&typeof o.get_RawY==="function") return o;}catch(e){}} return null;}
 
             // ── Button factory ────────────────────────────────────────────
@@ -1484,11 +1550,21 @@
             "&player=" + encodeURIComponent(name) +
             "&_=" + Date.now();
 
+        const __accessDiagStart = Date.now();
+        console.log("[BaseTag ACCESS DIAG] START", { player:name, timeoutMs:70000 });
+
         GM_xmlhttpRequest({
             method: "GET",
             url: url,
-            timeout: 30000,
+            timeout: 70000,
             onload: function(res) {
+                console.log("[BaseTag ACCESS DIAG] ONLOAD", {
+                    elapsedMs: Date.now() - __accessDiagStart,
+                    status: res.status,
+                    finalUrl: res.finalUrl,
+                    responseLength: String(res.responseText || "").length,
+                    responsePreview: String(res.responseText || "").slice(0,220)
+                });
                 let d=null;
                 try { d=JSON.parse(res.responseText||""); } catch(e) {}
                 if (d && d.ok && d.access === true && String(d.status||"").toUpperCase()==="ALLOWED") {
@@ -1506,10 +1582,19 @@
                 }
                 window.alert("BaseTag: access could not be verified. Please reload the world and try again.");
             },
-            ontimeout: function() {
-                window.alert("BaseTag: access server did not answer. Please reload the world and try again.");
+            ontimeout: function(err) {
+                console.error("[BaseTag ACCESS DIAG] TIMEOUT", {
+                    elapsedMs: Date.now() - __accessDiagStart,
+                    timeoutMs: 70000,
+                    error: err
+                });
+                window.alert("BaseTag: access server did not answer after 70 seconds. Please reload the world and try again.");
             },
             onerror: function(err) {
+                console.error("[BaseTag ACCESS DIAG] ERROR", {
+                    elapsedMs: Date.now() - __accessDiagStart,
+                    error: err
+                });
                 console.error("[BaseTag ACCESS] request failed:",err);
                 window.alert("BaseTag: connection to access server failed. Please reload the world and try again.");
             }
