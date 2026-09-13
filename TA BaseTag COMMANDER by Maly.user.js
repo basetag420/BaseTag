@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.74
+// @version      2.75
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.74";
+            const BASETAG_LOCAL_VERSION = "2.75";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -193,6 +193,77 @@
             }
         }
 
+            function commanderAccessWithRetry(cb) {
+                const maxAttempts = 3;
+                const attemptTimeoutMs = 30000;
+                const retryDelayMs = 2000;
+
+                function runAttempt(attemptNo) {
+                    const params = {
+                        action: "commanderAccess",
+                        world: FORCE_WORLD_ID,
+                        _: Date.now(),
+                        commanderPlayer: myPlayerName || detectPlayerName(),
+                        commanderToken: commanderDeviceToken
+                    };
+                    if (accessPassword) params.password = accessPassword;
+
+                    const url = API_URL + "?" + Object.keys(params)
+                        .map(k => encodeURIComponent(k) + "=" + encodeURIComponent(params[k]))
+                        .join("&");
+
+                    const started = Date.now();
+                    console.log("[BaseTag COMMANDER ACCESS] attempt", attemptNo + "/" + maxAttempts, "START");
+
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: url,
+                        data: "",
+                        timeout: attemptTimeoutMs,
+
+                        onload: function(res) {
+                            let data = null;
+                            try { data = JSON.parse(String((res && res.responseText) || "")); } catch(e) {}
+
+                            console.log("[BaseTag COMMANDER ACCESS] attempt", attemptNo + "/" + maxAttempts,
+                                "END", (Date.now()-started) + "ms", "HTTP", res.status, "JSON", !!data);
+
+                            if (data) {
+                                cb(data);
+                                return;
+                            }
+
+                            if (attemptNo < maxAttempts) {
+                                setTimeout(function(){ runAttempt(attemptNo + 1); }, retryDelayMs);
+                            } else {
+                                cb(null);
+                            }
+                        },
+
+                        ontimeout: function() {
+                            console.warn("[BaseTag COMMANDER ACCESS] attempt", attemptNo + "/" + maxAttempts,
+                                "TIMEOUT after", (Date.now()-started) + "ms");
+                            if (attemptNo < maxAttempts) {
+                                setTimeout(function(){ runAttempt(attemptNo + 1); }, retryDelayMs);
+                            } else {
+                                cb(null);
+                            }
+                        },
+
+                        onerror: function(err) {
+                            console.warn("[BaseTag COMMANDER ACCESS] attempt", attemptNo + "/" + maxAttempts, "ERROR", err);
+                            if (attemptNo < maxAttempts) {
+                                setTimeout(function(){ runAttempt(attemptNo + 1); }, retryDelayMs);
+                            } else {
+                                cb(null);
+                            }
+                        }
+                    });
+                }
+
+                runAttempt(1);
+            }
+
             function init() {
                 if (window.AFWBv14Loaded || commanderAuthBusy) return;
                 myPlayerName = detectPlayerName();
@@ -205,7 +276,7 @@
                     world: FORCE_WORLD_ID,
                     timeoutMs: 70000
                 });
-                apiCall({ action:"commanderAccess" }, function(auth) {
+                commanderAccessWithRetry(function(auth) {
                     commanderAuthBusy = false;
                     console.log("[BaseTag COMMANDER ACCESS DIAG] END", {
                         elapsedMs: Date.now() - __commanderAccessDiagStart,
@@ -2172,7 +2243,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.74 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.75 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
