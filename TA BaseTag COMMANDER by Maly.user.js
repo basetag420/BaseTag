@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.75
+// @version      2.79
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.75";
+            const BASETAG_LOCAL_VERSION = "2.79";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -710,6 +710,86 @@
             if(fresh.length) showAccessRequestNotice(fresh);
         }
 
+
+        const forgottenCleanupInFlight = Object.create(null);
+
+        function forgottenCleanupKey(m) {
+            return String(m && (m.world || FORCE_WORLD_ID)) + "|" +
+                   String(m && m.x) + "|" + String(m && m.y) + "|" +
+                   String(m && m.id || "");
+        }
+
+        function syncDeleteForgotten(m, cb) {
+            if (!m || !String(m.id || "").trim()) {
+                if (cb) cb({ok:false,error:"missing forgotten id"});
+                return;
+            }
+
+            const ck = forgottenCleanupKey(m);
+            if (forgottenCleanupInFlight[ck]) {
+                if (cb) cb({ok:true,alreadyInFlight:true});
+                return;
+            }
+            forgottenCleanupInFlight[ck] = true;
+
+            apiCall({
+                action: "deleteForgotten",
+                world: m.world || FORCE_WORLD_ID,
+                x: m.x,
+                y: m.y,
+                id: m.id
+            }, function(d) {
+                delete forgottenCleanupInFlight[ck];
+                console.log("[BaseTag] deleteForgotten:", d);
+                if (cb) cb(d);
+            });
+        }
+
+
+        function isConfirmedNonForgottenAt(x, y) {
+            try {
+                const v = getVisObjAt(x, y);
+                if (v) {
+                    try {
+                        const R = ClientLib.Vis.Region;
+                        if (R) {
+                            if (R.RegionNPCBase && v instanceof R.RegionNPCBase) return false;
+                            if (R.RegionRuin && v instanceof R.RegionRuin) return true;
+                            if (R.RegionCity && v instanceof R.RegionCity) return true;
+                            if (R.RegionNPCCamp && v instanceof R.RegionNPCCamp) return true;
+                            if (R.RegionPointOfInterest && v instanceof R.RegionPointOfInterest) return true;
+                        }
+                    } catch(e) {}
+
+                    const vt = getObjType(v);
+                    if (vt === "Forgotten Base") return false;
+                    if (vt === "Ruin" || vt === "Player Base" || vt === "Camp/Outpost" || vt === "POI")
+                        return true;
+                }
+
+                // Secondary positive proof from world data, if that sector is loaded.
+                const w = getWorldObjAt(x, y);
+                if (w) {
+                    let wt = null;
+                    try { wt = typeof w.get_Type === "function" ? w.get_Type() : w.Type; } catch(e) {}
+
+                    try {
+                        const E = ClientLib.Data.WorldSector.ObjectType;
+                        if (E && wt != null) {
+                            const keys = Object.keys(E);
+                            for (let i=0; i<keys.length; i++) {
+                                const n = String(keys[i]);
+                                if (E[n] !== wt) continue;
+                                if (/npcbase|forgottenbase/i.test(n)) return false;
+                                if (/ruin|city|camp|outpost|pointofinterest|poi/i.test(n)) return true;
+                            }
+                        }
+                    } catch(e) {}
+                }
+            } catch(e) {}
+            return false;
+        }
+
         function syncFromServer() {
 
             if (syncInProgress) return;
@@ -737,6 +817,18 @@
 
         data.marks.forEach(function(m) {
             if (String(m.world) !== String(FORCE_WORLD_ID)) return;
+
+            // Cleanup rides on the existing 60s marker sync: no extra timer, no map scan.
+            // Check ONLY Forgotten markers and delete only on positive proof that the
+            // same coordinate is now a Ruin/Player/Camp/POI.
+            if (String(m.type || "") === "Forgotten Base" &&
+                String(m.id || "").trim() &&
+                isConfirmedNonForgottenAt(Number(m.x), Number(m.y))) {
+                syncDeleteForgotten(m);
+                console.log("[BaseTag] sync cleanup stale Forgotten", m.x + ":" + m.y, "id", m.id);
+                return; // do not re-add stale marker locally
+            }
+
             next[key(m.x, m.y)] = m;
         });
 
@@ -962,7 +1054,7 @@
                     delete mySimSaves[k];
                     saveLocal(STORAGE_KEY, marks);
                     saveLocal(SIM_STORAGE_KEY, mySimSaves);
-                    syncDelete(m);
+                    syncDeleteForgotten(m);
                     console.log("[BaseTag] removed stale Forgotten marker at", m.x + ":" + m.y, "now", getObjType(o));
                     return true;
                 } catch(e) {}
@@ -1618,6 +1710,29 @@
                 if(id==null) return false;
                 return !!marksById[String(id)];
             }
+
+            function markerAppliesToObj(m, o) {
+                try {
+                    if (!m || !o) return false;
+                    const mt = String(m.type || "");
+                    const ot = getObjType(o);
+
+                    // Strict separation between PvE/NPC and PvP/player markers.
+                    if (mt === "Forgotten Base" || mt === "Forgotten Slot") return ot === "Forgotten Base";
+                    if (mt === "Player Base") return ot === "Player Base";
+                    if (mt === "Camp/Outpost") return ot === "Camp/Outpost";
+                    if (mt === "POI") return ot === "POI";
+
+                    // Backward compatibility for old MAKE LINE rows, which were stored as type "Manual".
+                    if (mt === "Manual" && /^Manual\s+(FAST|KILL|IGNORE)\s+\d+:\d+$/i.test(String(m.name || "")))
+                        return ot === "Forgotten Base";
+
+                    // Unknown/manual user-created targets keep legacy behavior.
+                    return true;
+                } catch(e) {}
+                return false;
+            }
+
             function getActionForObj(o) {
                 try {
                     const k = key(o.get_RawX(), o.get_RawY());
@@ -1625,21 +1740,37 @@
                     // O(1): local MEMBER marker by coordinates.
                     if (memberMarks[k]) return "MEMBER";
 
-                    // O(1): shared marker by coordinates.
+                    // O(1): shared marker by coordinates, but only when its target type
+                    // matches the object currently standing on this coordinate.
                     const m = marks[k];
-                    if (m && (m.action === "KILL" || m.action === "IGNORE")) return m.action;
+                    if (m && markerAppliesToObj(m, o) &&
+                        (m.action === "KILL" || m.action === "IGNORE")) return m.action;
 
-                    // O(1): fallback by NPC/base ID.
-                    // Previously this looped over EVERY marker on EVERY VisUpdate.
+                    // O(1): fallback by NPC/base ID, with the same type separation.
                     const id = String(getId(o));
-                    if (id && marksById[id]) return marksById[id].action;
+                    const byId = id && marksById[id] ? marksById[id] : null;
+                    if (byId && markerAppliesToObj(byId, o)) return byId.action;
                 } catch (e) {}
                 return null;
         }
             function getVisObjAt(x,y){try{const r=ClientLib.Vis.VisMain.GetInstance().get_Region(); return r.GetObjectFromPosition(x*r.get_GridWidth(),y*r.get_GridHeight());}catch(e){return null;}}
             function getWorldObjAt(x,y){try{return ClientLib.Data.MainData.GetInstance().get_World().GetObjectFromPosition(x,y);}catch(e){return null;}}
-            function isDeadOrGone(x,y){const w=getWorldObjAt(x,y),v=getVisObjAt(x,y); if(!w&&!v) return false; try{if(v&&v.get_VisObjectType()===ClientLib.Vis.VisObject.EObjectType.RegionRuin) return true;}catch(e){} try{if(w&&w.Type===ClientLib.Data.WorldSector.ObjectType.Ruin) return true;}catch(e){} return false;}
-            function cleanDeadMarks(){let ch=false; const del=[]; Object.keys(marks).forEach(function(k){const m=marks[k]; if(isDeadOrGone(m.x,m.y)){del.push(m);delete marks[k];delete mySimSaves[k];ch=true;}}); if(ch){saveLocal(STORAGE_KEY,marks);saveLocal(SIM_STORAGE_KEY,mySimSaves);del.forEach(syncDelete);}}
+            function isDeadOrGone(x,y){ return isConfirmedNonForgottenAt(Number(x),Number(y)); }
+            function cleanDeadMarks(){
+                let ch=false; const del=[];
+                Object.keys(marks).forEach(function(k){
+                    const m=marks[k];
+                    if(!m || String(m.type||"")!=="Forgotten Base" || !String(m.id||"").trim()) return;
+                    if(isConfirmedNonForgottenAt(Number(m.x),Number(m.y))){
+                        del.push(m); delete marks[k]; delete mySimSaves[k]; ch=true;
+                    }
+                });
+                if(ch){
+                    saveLocal(STORAGE_KEY,marks);
+                    saveLocal(SIM_STORAGE_KEY,mySimSaves);
+                    del.forEach(syncDeleteForgotten);
+                }
+            }
             function refreshOneMarkedCoord(k){
                 try{
                     const parts=String(k).split(":");
@@ -2175,7 +2306,7 @@
                             if(!d||!d.ok){lineStatus.setTextColor("#ef4444");lineStatus.setValue("Add failed: "+((d&&d.error)||"unknown error"));return;}
                             for(let n=lo;n<=hi;n++){
                                 const x=orientation==="H"?n:fixed,y=orientation==="H"?fixed:n;
-                                marks[key(x,y)]={world:FORCE_WORLD_ID,x:x,y:y,id:"",action:marker==="IGNORE"?"IGNORE":"KILL",mark:marker==="IGNORE"?"IGNORE":"KILL",name:"Manual "+marker+" "+x+":"+y,type:"Manual",level:"",alliance:"",byAlliance:getMyAlliance()||"",priority:marker==="FAST"?"HIGH":"MED",notes:spec.notes||"",by:myPlayerName,time:new Date().toString()};
+                                marks[key(x,y)]={world:FORCE_WORLD_ID,x:x,y:y,id:"",action:marker==="IGNORE"?"IGNORE":"KILL",mark:marker==="IGNORE"?"IGNORE":"KILL",name:"Manual "+marker+" "+x+":"+y,type:"Forgotten Slot",level:"",alliance:"",byAlliance:getMyAlliance()||"",priority:marker==="FAST"?"HIGH":"MED",notes:spec.notes||"",by:myPlayerName,time:new Date().toString()};
                             }
                             saveLocal(STORAGE_KEY,marks);refreshMarkedObjects();
                             lineStatus.setTextColor("#22c55e");lineStatus.setValue("Added/updated "+Number(d.count||0)+" markers on "+desc);
@@ -2243,7 +2374,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.75 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.79 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
