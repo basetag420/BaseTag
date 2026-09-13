@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.38
+// @version      1.39
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -1545,62 +1545,80 @@
             setTimeout(requestNickAccess, 1000);
             return;
         }
-        const url = AUTH_API_URL +
-            "?action=requestAccess" +
-            "&player=" + encodeURIComponent(name) +
-            "&_=" + Date.now();
 
-        const __accessDiagStart = Date.now();
-        console.log("[BaseTag ACCESS DIAG] START", { player:name, timeoutMs:70000 });
+        const maxAttempts = 3;
+        const attemptTimeoutMs = 30000;
+        const retryDelayMs = 2000;
 
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: url,
-            timeout: 70000,
-            onload: function(res) {
-                console.log("[BaseTag ACCESS DIAG] ONLOAD", {
-                    elapsedMs: Date.now() - __accessDiagStart,
-                    status: res.status,
-                    finalUrl: res.finalUrl,
-                    responseLength: String(res.responseText || "").length,
-                    responsePreview: String(res.responseText || "").slice(0,220)
-                });
-                let d=null;
-                try { d=JSON.parse(res.responseText||""); } catch(e) {}
-                if (d && d.ok && d.access === true && String(d.status||"").toUpperCase()==="ALLOWED") {
-                    const gameWindow = (typeof unsafeWindow !== "undefined" && unsafeWindow) ? unsafeWindow : window;
-                    pageMain(gameWindow, "", GM_xmlhttpRequest);
-                    return;
+        function runAttempt(attemptNo) {
+            const url = AUTH_API_URL +
+                "?action=requestAccess" +
+                "&player=" + encodeURIComponent(name) +
+                "&_=" + Date.now();
+
+            const started = Date.now();
+            console.log("[BaseTag ACCESS] attempt", attemptNo + "/" + maxAttempts, "START");
+
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: url,
+                timeout: attemptTimeoutMs,
+
+                onload: function(res) {
+                    let d = null;
+                    try { d = JSON.parse(res.responseText || ""); } catch(e) {}
+
+                    console.log("[BaseTag ACCESS] attempt", attemptNo + "/" + maxAttempts,
+                        "END", (Date.now()-started) + "ms", "HTTP", res.status,
+                        "JSON", !!d);
+
+                    if (d && d.ok && d.access === true &&
+                        String(d.status || "").toUpperCase() === "ALLOWED") {
+                        const gameWindow = (typeof unsafeWindow !== "undefined" && unsafeWindow) ? unsafeWindow : window;
+                        pageMain(gameWindow, "", GM_xmlhttpRequest);
+                        return;
+                    }
+
+                    if (d && (d.banned === true || String(d.status || "").toUpperCase() === "BANNED")) {
+                        window.alert("BaseTag: ACCESS BLOCKED. Your player account is banned.");
+                        return;
+                    }
+
+                    if (d && (d.pending === true || String(d.status || "").toUpperCase() === "PENDING")) {
+                        window.alert("BaseTag: access request sent. Waiting for Commander approval.\n\nAfter approval, reload the world.");
+                        return;
+                    }
+
+                    if (attemptNo < maxAttempts) {
+                        setTimeout(function(){ runAttempt(attemptNo + 1); }, retryDelayMs);
+                    } else {
+                        window.alert("BaseTag: access server did not return a valid answer after 3 attempts. Please reload the world and try again.");
+                    }
+                },
+
+                ontimeout: function() {
+                    console.warn("[BaseTag ACCESS] attempt", attemptNo + "/" + maxAttempts,
+                        "TIMEOUT after", (Date.now()-started) + "ms");
+                    if (attemptNo < maxAttempts) {
+                        setTimeout(function(){ runAttempt(attemptNo + 1); }, retryDelayMs);
+                    } else {
+                        window.alert("BaseTag: access server did not answer after 3 attempts. Please reload the world and try again.");
+                    }
+                },
+
+                onerror: function(err) {
+                    console.warn("[BaseTag ACCESS] attempt", attemptNo + "/" + maxAttempts, "ERROR", err);
+                    if (attemptNo < maxAttempts) {
+                        setTimeout(function(){ runAttempt(attemptNo + 1); }, retryDelayMs);
+                    } else {
+                        window.alert("BaseTag: connection to access server failed after 3 attempts. Please reload the world and try again.");
+                    }
                 }
-                if (d && (d.banned===true || String(d.status||"").toUpperCase()==="BANNED")) {
-                    window.alert("BaseTag: ACCESS BLOCKED. Your player account is banned.");
-                    return;
-                }
-                if (d && (d.pending===true || String(d.status||"").toUpperCase()==="PENDING")) {
-                    window.alert("BaseTag: access request sent. Waiting for Commander approval.\n\nAfter approval, reload the world.");
-                    return;
-                }
-                window.alert("BaseTag: access could not be verified. Please reload the world and try again.");
-            },
-            ontimeout: function(err) {
-                console.error("[BaseTag ACCESS DIAG] TIMEOUT", {
-                    elapsedMs: Date.now() - __accessDiagStart,
-                    timeoutMs: 70000,
-                    error: err
-                });
-                window.alert("BaseTag: access server did not answer after 70 seconds. Please reload the world and try again.");
-            },
-            onerror: function(err) {
-                console.error("[BaseTag ACCESS DIAG] ERROR", {
-                    elapsedMs: Date.now() - __accessDiagStart,
-                    error: err
-                });
-                console.error("[BaseTag ACCESS] request failed:",err);
-                window.alert("BaseTag: connection to access server failed. Please reload the world and try again.");
-            }
-        });
+            });
+        }
+
+        runAttempt(1);
     }
-
     requestNickAccess();
 
 })();
