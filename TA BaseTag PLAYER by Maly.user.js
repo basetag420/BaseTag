@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.39
+// @version      1.41
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -584,8 +584,33 @@
                     try {
 
                         const k = key(this.get_RawX(), this.get_RawY());
-                        const baseTagColor = plateColorByCoord[k];
-                        if (baseTagColor !== undefined) return baseTagColor;
+                        const cached = plateColorByCoord[k];
+
+                        if (cached !== undefined) {
+                            const ot = getObjType(this);
+                            const mt = String(cached.type || "");
+
+                            let applies = false;
+
+                            if (mt === "Forgotten Base" || mt === "Forgotten Slot") {
+                                applies = (ot === "Forgotten Base");
+                            } else if (mt === "Player Base") {
+                                applies = (ot === "Player Base");
+                            } else if (mt === "Camp/Outpost") {
+                                applies = (ot === "Camp/Outpost");
+                            } else if (mt === "POI") {
+                                applies = (ot === "POI");
+                            } else if (
+                                mt === "Manual" &&
+                                /^Manual\s+(FAST|KILL|IGNORE)\s+\d+:\d+$/i.test(String(cached.name || ""))
+                            ) {
+                                applies = (ot === "Forgotten Base");
+                            } else {
+                                applies = true;
+                            }
+
+                            if (applies) return cached.color;
+                        }
 
                     } catch (e) {}
 
@@ -878,7 +903,7 @@
             // Fast secondary index: NPC/base ID -> marker.
             // VisUpdate can fire extremely often; never scan all markers from that hot path.
             let marksById = {};
-            let plateColorByCoord = Object.create(null);
+            let plateColorByCoord = Object.create(null); // k -> {color,type,name}
 
             function rebuildMarksById(){
                 const next = {};
@@ -900,13 +925,26 @@
                     for (const k in marks) {
                         const m=marks[k];
                         if(!m) continue;
-                        if(m.action==="KILL" && m.priority==="HIGH") next[k]=ClientLib.Vis.EBackgroundPlateColor.Cyan;
-                        else if(m.action==="KILL") next[k]=ClientLib.Vis.EBackgroundPlateColor.Blue;
-                        else if(m.action==="IGNORE") next[k]=ClientLib.Vis.EBackgroundPlateColor.Orange;
+
+                        let color;
+                        if(m.action==="KILL" && m.priority==="HIGH") color=ClientLib.Vis.EBackgroundPlateColor.Cyan;
+                        else if(m.action==="KILL") color=ClientLib.Vis.EBackgroundPlateColor.Blue;
+                        else if(m.action==="IGNORE") color=ClientLib.Vis.EBackgroundPlateColor.Orange;
+                        else continue;
+
+                        next[k]={
+                            color: color,
+                            type: String(m.type||""),
+                            name: String(m.name||"")
+                        };
                     }
+
                     for (const k in memberMarks) {
-                        // Local MEMBER keeps the same priority it had before: white wins.
-                        next[k]=ClientLib.Vis.EBackgroundPlateColor.White;
+                        next[k]={
+                            color: ClientLib.Vis.EBackgroundPlateColor.White,
+                            type: "Player Base",
+                            name: "MEMBER"
+                        };
                     }
                 } catch(e) {}
                 plateColorByCoord=next;
@@ -937,6 +975,29 @@
                 if(id==null) return false;
                 return !!marksById[String(id)];
             }
+
+            function markerAppliesToObj(m, o) {
+                try {
+                    if (!m || !o) return false;
+                    const mt = String(m.type || "");
+                    const ot = getObjType(o);
+
+                    // Strict separation between PvE/NPC and PvP/player markers.
+                    if (mt === "Forgotten Base" || mt === "Forgotten Slot") return ot === "Forgotten Base";
+                    if (mt === "Player Base") return ot === "Player Base";
+                    if (mt === "Camp/Outpost") return ot === "Camp/Outpost";
+                    if (mt === "POI") return ot === "POI";
+
+                    // Backward compatibility for old MAKE LINE rows, which were stored as type "Manual".
+                    if (mt === "Manual" && /^Manual\s+(FAST|KILL|IGNORE)\s+\d+:\d+$/i.test(String(m.name || "")))
+                        return ot === "Forgotten Base";
+
+                    // Unknown/manual user-created targets keep legacy behavior.
+                    return true;
+                } catch(e) {}
+                return false;
+            }
+
             function getActionForObj(o) {
                 try {
                     const k = key(o.get_RawX(), o.get_RawY());
@@ -944,14 +1005,15 @@
                     // O(1): local MEMBER marker by coordinates.
                     if (memberMarks[k]) return "MEMBER";
 
-                    // O(1): shared marker by coordinates.
+                    // O(1): shared marker by coordinates, but only for matching target type.
                     const m = marks[k];
-                    if (m && (m.action === "KILL" || m.action === "IGNORE")) return m.action;
+                    if (m && markerAppliesToObj(m, o) &&
+                        (m.action === "KILL" || m.action === "IGNORE")) return m.action;
 
-                    // O(1): fallback by NPC/base ID.
-                    // Previously this looped over EVERY marker on EVERY VisUpdate.
+                    // O(1): ID fallback, also type-safe.
                     const id = String(getId(o));
-                    if (id && marksById[id]) return marksById[id].action;
+                    const byId = id && marksById[id] ? marksById[id] : null;
+                    if (byId && markerAppliesToObj(byId, o)) return byId.action;
                 } catch (e) {}
                 return null;
         }
