@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.41
+// @version      1.46
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -360,6 +360,7 @@
             }
 
             GM_xmlhttpRequest({
+                anonymous: true,
                 // GET is deliberate: Google Apps Script's /exec redirects, and Opera/MV3
                 // has had browser-specific GM_xmlhttpRequest behavior around redirects/POST.
                 // All BaseTag parameters are already in the query string.
@@ -1622,6 +1623,7 @@
             console.log("[BaseTag ACCESS] attempt", attemptNo + "/" + maxAttempts, "START");
 
             GM_xmlhttpRequest({
+                anonymous: true,
                 method: "GET",
                 url: url,
                 timeout: attemptTimeoutMs,
