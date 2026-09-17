@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.80
+// @version      2.84
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -100,7 +100,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.80";
+            const BASETAG_LOCAL_VERSION = "2.84";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -216,6 +216,7 @@
                     console.log("[BaseTag COMMANDER ACCESS] attempt", attemptNo + "/" + maxAttempts, "START");
 
                     GM_xmlhttpRequest({
+                anonymous: true,
                         method: "POST",
                         url: url,
                         data: "",
@@ -607,6 +608,7 @@
                 if (finished) return;
                 const fallbackStart = Date.now();
                 GM_xmlhttpRequest({
+                anonymous: true,
                     method: "GET",
                     url: url,
                     timeout: requestTimeoutMs,
@@ -634,6 +636,7 @@
             // If a browser/Tampermonkey environment rejects the Apps Script POST/redirect,
             // retry the same request once with the PLAYER-style GET transport.
             GM_xmlhttpRequest({
+                anonymous: true,
                 method: "POST",
                 url: url,
                 data: "",
@@ -1581,6 +1584,7 @@
                     .join("&");
 
                 GM_xmlhttpRequest({
+                anonymous: true,
                     method: "POST",
                     url: API_URL,
                     headers: {
@@ -2416,7 +2420,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.80 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.84 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
