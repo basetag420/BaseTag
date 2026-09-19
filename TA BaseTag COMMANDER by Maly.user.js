@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.86
+// @version      2.87
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -99,7 +99,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.86";
+            const BASETAG_LOCAL_VERSION = "2.87";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
