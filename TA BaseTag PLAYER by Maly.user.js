@@ -1,15 +1,14 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.46
+// @version      1.47
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @match        https://*.alliances.commandandconquer.com/*/index.aspx*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
-// @connect      script.google.com
-// @connect      script.googleusercontent.com
+// @connect      basetag-backend.basetag420.workers.dev
 // @connect      raw.githubusercontent.com
 // ==/UserScript==
 
@@ -52,7 +51,7 @@
 
             "use strict";
 
-            const API_URL        = "https://script.google.com/macros/s/AKfycbw9CTsOcrzk_5LQ0TNsX9GWpuZf3vVuZA1MT2YArqD30MjQEjzFMTWWvmVBDpqGaCGI/exec";
+            const API_URL        = "https://basetag-backend.basetag420.workers.dev";
             const ADMIN_KEY      = "ogunhand_secret_472";
             function getWorldNumber() {
                 const m = String(pageWindow.location.pathname || "").match(/\/(\d+)\//);
@@ -81,7 +80,7 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.37";
+            const BASETAG_LOCAL_VERSION = "1.47";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -1586,7 +1585,7 @@
     // This avoids the Firefox page-message bridge during login.
     // ============================================================
 
-    const AUTH_API_URL = "https://script.google.com/macros/s/AKfycbw9CTsOcrzk_5LQ0TNsX9GWpuZf3vVuZA1MT2YArqD30MjQEjzFMTWWvmVBDpqGaCGI/exec";
+    const AUTH_API_URL = "https://basetag-backend.basetag420.workers.dev";
     const AUTH_STORAGE_KEY = "AF_WAR_BOARD_PASSWORD_V1";
     let authBusy = false;
 
