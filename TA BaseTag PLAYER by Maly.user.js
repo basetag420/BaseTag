@@ -489,9 +489,6 @@
             function syncSetPlayers(playerList, cb) {
                 if (cb) cb({ok:false,error:"read only"});
             }
-            function syncGetAllowedPlayers(cb) {
-                apiCall({ action:"listPlayers" }, cb);
-            }
 
             // ── Plate color ───────────────────────────────────────────────
             function hookNativePlateColor() { patchPlateClass(ClientLib.Vis.Region.RegionCity); patchPlateClass(ClientLib.Vis.Region.RegionNPCBase); patchHasAttackFormation(); }
