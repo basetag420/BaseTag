@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.47
+// @version      1.48
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -52,7 +52,6 @@
             "use strict";
 
             const API_URL        = "https://basetag-backend.basetag420.workers.dev";
-            const ADMIN_KEY      = "ogunhand_secret_472";
             function getWorldNumber() {
                 const m = String(pageWindow.location.pathname || "").match(/\/(\d+)\//);
                 return m ? String(m[1]) : "unknown";
@@ -80,7 +79,7 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.47";
+            const BASETAG_LOCAL_VERSION = "1.48";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -491,7 +490,7 @@
                 if (cb) cb({ok:false,error:"read only"});
             }
             function syncGetAllowedPlayers(cb) {
-                apiCall({ action:"listPlayers", key:ADMIN_KEY }, cb);
+                apiCall({ action:"listPlayers" }, cb);
             }
 
             // ── Plate color ───────────────────────────────────────────────
