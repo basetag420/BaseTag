@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.84
+// @version      2.85
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -10,6 +10,7 @@
 // @grant        unsafeWindow
 // @connect      script.google.com
 // @connect      script.googleusercontent.com
+// @connect      basetag-backend.basetag420.workers.dev
 // @connect      raw.githubusercontent.com
 // ==/UserScript==
 
@@ -52,7 +53,7 @@
 
             "use strict";
 
-            const API_URL        = "https://script.google.com/macros/s/AKfycbw9CTsOcrzk_5LQ0TNsX9GWpuZf3vVuZA1MT2YArqD30MjQEjzFMTWWvmVBDpqGaCGI/exec";
+            const API_URL        = "https://basetag-backend.basetag420.workers.dev/";
             const COMMANDER_TOKEN_STORAGE_KEY = "BASETAG_COMMANDER_DEVICE_TOKEN_V1";
 
             function getOrCreateCommanderToken() {
@@ -100,7 +101,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.84";
+            const BASETAG_LOCAL_VERSION = "2.85";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -2851,7 +2852,7 @@
     // This avoids the Firefox page-message bridge during login.
     // ============================================================
 
-    const AUTH_API_URL = "https://script.google.com/macros/s/AKfycbw9CTsOcrzk_5LQ0TNsX9GWpuZf3vVuZA1MT2YArqD30MjQEjzFMTWWvmVBDpqGaCGI/exec";
+    const AUTH_API_URL = "https://basetag-backend.basetag420.workers.dev/";
     const AUTH_STORAGE_KEY = "AF_WAR_BOARD_PASSWORD_V1";
     let authBusy = false;
 
