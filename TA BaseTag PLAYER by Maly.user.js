@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.48
+// @version      1.50
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -79,7 +79,7 @@
             let shiftPanel   = null;
             let lastPlayersHash = "";
 
-            const BASETAG_LOCAL_VERSION = "1.48";
+            const BASETAG_LOCAL_VERSION = "1.50";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -197,7 +197,7 @@
         setInterval(function () {
             // Network check only. syncFromServer() redraws markers ONLY when data changed.
             syncFromServer();
-        }, 60000); // co minutę
+        }, 300000); // co 5 minut
 
         // Nick approval replaced the old alliance-member allowlist sync.
         // PLAYER is read-only, so these legacy background calls are intentionally disabled.
@@ -393,6 +393,14 @@
                 }
             });
         }
+        const REVISION_STORAGE_KEY = "BASETAG_WORLD_REVISION_V1_" + FORCE_WORLD_ID;
+        let serverRevision = null;
+        try {
+            const savedRevision = localStorage.getItem(REVISION_STORAGE_KEY);
+            if (savedRevision !== null && savedRevision !== "") serverRevision = Number(savedRevision);
+            if (!Number.isFinite(serverRevision)) serverRevision = null;
+        } catch(e) { serverRevision = null; }
+
         function syncFromServer() {
 
             if (syncInProgress) return;
@@ -405,7 +413,9 @@
                 syncInProgress = false;
             }, 35000);
 
-            apiCall({ action:"list", player:myPlayerName }, function(data) {
+            const listParams = { action:"list", player:myPlayerName };
+            if (serverRevision !== null) listParams.revision = serverRevision;
+            apiCall(listParams, function(data) {
                 clearTimeout(syncWatchdog);
 
                 syncInProgress = false;
@@ -418,8 +428,22 @@
                     return;
                 }
 
-                if(!data || !data.ok || !Array.isArray(data.marks))
+                if(!data || !data.ok) return;
+
+                if (data.unchanged === true) {
+                    if (Number.isFinite(Number(data.revision))) {
+                        serverRevision = Number(data.revision);
+                        try { localStorage.setItem(REVISION_STORAGE_KEY, String(serverRevision)); } catch(e) {}
+                    }
                     return;
+                }
+
+                if(!Array.isArray(data.marks)) return;
+
+                if (Number.isFinite(Number(data.revision))) {
+                    serverRevision = Number(data.revision);
+                    try { localStorage.setItem(REVISION_STORAGE_KEY, String(serverRevision)); } catch(e) {}
+                }
 
                 const next = {};
 
@@ -580,6 +604,12 @@
                     try {
 
                         const k = key(this.get_RawX(), this.get_RawY());
+
+                        // Local MEMBER: same behavior as Commander — white has priority.
+                        if (memberMarks[k]) {
+                            return ClientLib.Vis.EBackgroundPlateColor.White;
+                        }
+
                         const cached = plateColorByCoord[k];
 
                         if (cached !== undefined) {
