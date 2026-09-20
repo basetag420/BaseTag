@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.87
+// @version      2.89
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -73,6 +73,9 @@
             }
 
             const commanderDeviceToken = getOrCreateCommanderToken();
+            // ADMIN_KEY is intentionally kept only in memory for the current game session.
+            // It is requested only when opening the Alliance Access section.
+            let allianceAccessAdminKey = "";
 
             function getWorldNumber() {
                 const m = String(pageWindow.location.pathname || "").match(/\/(\d+)\//);
@@ -99,7 +102,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.87";
+            const BASETAG_LOCAL_VERSION = "2.88";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -298,8 +301,10 @@
                         try {
                             window.alert(
                                 status === "PENDING"
-                                ? "BaseTag COMMANDER: this installation is PENDING.\n\nOpen the Commanders sheet, find " + myPlayerName + " / world " + FORCE_WORLD_ID + " and change status to ALLOWED, then reload the game."
-                                : "BaseTag COMMANDER: access denied (" + status + ")."
+                                ? "BaseTag COMMANDER: this installation is PENDING.\n\nOpen the Commanders list, find " + myPlayerName + " / world " + FORCE_WORLD_ID + " and change status to ALLOWED, then reload the game."
+                                : (status === "DEVICE_PENDING"
+                                    ? "BaseTag COMMANDER: this browser/device is waiting for approval. Existing approved devices remain active."
+                                    : "BaseTag COMMANDER: access denied (" + status + ").")
                             );
                         } catch(e) {}
                         return;
@@ -933,26 +938,56 @@
                 apiCall({action:"deleteLine",world:FORCE_WORLD_ID,orientation:spec.orientation,fixed:spec.fixed,from:spec.from,to:spec.to}, cb||function(){});
             }
 
+            function adminApiCall(params, cb) {
+                params = params || {};
+                params.adminKey = allianceAccessAdminKey;
+                apiCall(params, function(d){
+                    if (d && d.error === "admin unauthorized") allianceAccessAdminKey = "";
+                    if (cb) cb(d);
+                });
+            }
             function syncSetPlayers(playerList, cb) {
-                apiCall({ action:"setPlayers", players:JSON.stringify(playerList) }, cb||function(){});
+                adminApiCall({ action:"setPlayers", players:JSON.stringify(playerList) }, cb||function(){});
             }
             function syncGetAllowedPlayers(cb) {
-                apiCall({ action:"listPlayers" }, cb);
+                adminApiCall({ action:"listPlayers" }, cb);
             }
             function syncGetBannedPlayers(cb) {
-                apiCall({ action:"listBanned" }, cb);
+                adminApiCall({ action:"listBanned" }, cb);
             }
             function syncGetPendingPlayers(cb) {
-                apiCall({ action:"listPending" }, cb);
+                adminApiCall({ action:"listPending" }, cb);
             }
             function syncGetAccessSnapshot(cb) {
-                apiCall({ action:"accessSnapshot" }, cb);
+                adminApiCall({ action:"accessSnapshot" }, cb);
             }
             function syncBanPlayer(name, cb) {
-                apiCall({ action:"banPlayer", player:name }, cb||function(){});
+                adminApiCall({ action:"banPlayer", player:name }, cb||function(){});
             }
             function syncUnbanPlayer(name, cb) {
-                apiCall({ action:"unbanPlayer", player:name }, cb||function(){});
+                adminApiCall({ action:"unbanPlayer", player:name }, cb||function(){});
+            }
+            function syncGetCommanderDevices(cb) {
+                adminApiCall({ action:"listCommanderDevices" }, cb||function(){});
+            }
+            function syncApproveCommanderDevice(player, world, tokenHash, cb) {
+                adminApiCall({ action:"approveCommanderDevice", player:player, deviceWorld:world, tokenHash:tokenHash }, cb||function(){});
+            }
+            function syncRemoveCommanderDevice(player, world, tokenHash, cb) {
+                adminApiCall({ action:"removeCommanderDevice", player:player, deviceWorld:world, tokenHash:tokenHash }, cb||function(){});
+            }
+            function verifyAllianceAccessAdmin(cb) {
+                if (allianceAccessAdminKey) { cb(true); return; }
+                let key = "";
+                try { key = String(window.prompt("Alliance Access — enter ADMIN_KEY:", "") || "").trim(); } catch(e) {}
+                if (!key) { cb(false); return; }
+                allianceAccessAdminKey = key;
+                adminApiCall({ action:"adminCheck" }, function(d){
+                    if (d && d.ok && d.admin === true) { cb(true); return; }
+                    allianceAccessAdminKey = "";
+                    try { window.alert("Alliance Access: invalid ADMIN_KEY."); } catch(e) {}
+                    cb(false);
+                });
             }
 
             // ── Plate color ───────────────────────────────────────────────
@@ -2034,11 +2069,20 @@
                         tabAccess.setBackgroundColor("#162033"); tabAccess.setTextColor("#94a3b8");
                         savePanelPrefsPatch({tab:"marks"});
                     } else {
-                        pageMarks.setVisibility("excluded"); pageAccess.setVisibility("visible");
-                        tabAccess.setBackgroundColor("#0a2a4a"); tabAccess.setTextColor("#00ccff");
-                        tabMarks.setBackgroundColor("#162033"); tabMarks.setTextColor("#94a3b8");
-                        savePanelPrefsPatch({tab:"access"});
-                        loadAccessPage();
+                        verifyAllianceAccessAdmin(function(granted){
+                            if (!granted) {
+                                pageMarks.setVisibility("visible"); pageAccess.setVisibility("excluded");
+                                tabMarks.setBackgroundColor("#0a2a4a"); tabMarks.setTextColor("#00ccff");
+                                tabAccess.setBackgroundColor("#162033"); tabAccess.setTextColor("#94a3b8");
+                                savePanelPrefsPatch({tab:"marks"});
+                                return;
+                            }
+                            pageMarks.setVisibility("excluded"); pageAccess.setVisibility("visible");
+                            tabAccess.setBackgroundColor("#0a2a4a"); tabAccess.setTextColor("#00ccff");
+                            tabMarks.setBackgroundColor("#162033"); tabMarks.setTextColor("#94a3b8");
+                            savePanelPrefsPatch({tab:"access"});
+                            loadAccessPage();
+                        });
                     }
                 }
                 tabMarks.addListener("execute",function(){showTab("marks");});
@@ -2419,7 +2463,7 @@
                 function legendItem(color,text){const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(4)); const dot=new qx.ui.basic.Label("●"); dot.set({textColor:color}); const lbl=new qx.ui.basic.Label(text); lbl.set({textColor:"#1e3a5a"}); row.add(dot);row.add(lbl); return row;}
                 legendBar.add(legendItem("#00ccff","Cyan = FAST")); legendBar.add(legendItem("#2563eb","Blue = KILL")); legendBar.add(legendItem("#ef4444","Red = IGNORE")); legendBar.add(legendItem("#ffffff","White = MEMBER"));
                 const flex3=new qx.ui.core.Spacer(); legendBar.add(flex3,{flex:1});
-                const vLbl=new qx.ui.basic.Label("v2.84 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
+                const vLbl=new qx.ui.basic.Label("v2.89 · World "+FORCE_WORLD_ID); vLbl.set({textColor:"#0f1a2e"}); legendBar.add(vLbl);
                 pageMarks.add(legendBar);
 
                 // ── Alliance Access page ──────────────────────────────────
@@ -2468,6 +2512,7 @@
                     let accessAllowedData=null;
                     let accessPendingData=null;
                     let accessBannedData=null;
+                    let commanderDevicesData=null;
 
                     function finishAccessLoad() {
 
@@ -2508,6 +2553,15 @@
                         }
                         if(pendingData&&pendingData.ok&&Array.isArray(pendingData.players)) {
                             pendingData.players.forEach(function(n){
+                                n=String(n||"").trim();
+                                if(n) memberMap[n.toLowerCase()]=n;
+                            });
+                        }
+                        // Keep banned players visible in Alliance Access as red rows.
+                        // Without this merge, a newly banned player could disappear from
+                        // the list because they are no longer ALLOWED/PENDING.
+                        if(banData&&banData.ok&&Array.isArray(banData.players)) {
+                            banData.players.forEach(function(n){
                                 n=String(n||"").trim();
                                 if(n) memberMap[n.toLowerCase()]=n;
                             });
@@ -2583,6 +2637,47 @@
                             });
                         }
 
+                        // Commander devices — ADMIN_KEY protected because this entire page is protected.
+                        const devSep=new qx.ui.basic.Label("Commander Devices");
+                        devSep.set({textColor:"#00ccff",font:"bold",padding:[14,0,6,0]});
+                        aVbox.add(devSep);
+                        const devHelp=new qx.ui.basic.Label("Each browser/device is approved once. Approving a new one does not remove existing devices.");
+                        devHelp.set({textColor:"#64748b",padding:[0,0,6,0]}); aVbox.add(devHelp);
+                        const devices=(commanderDevicesData&&commanderDevicesData.ok&&Array.isArray(commanderDevicesData.devices))?commanderDevicesData.devices:[];
+                        if(!devices.length){
+                            const none=new qx.ui.basic.Label("No registered Commander devices yet."); none.set({textColor:"#475569",padding:6}); aVbox.add(none);
+                        } else {
+                            devices.forEach(function(dev,di){
+                                const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(8));
+                                row.set({padding:[4,8],backgroundColor:di%2===0?"#0a0f1e":"#080b14"});
+                                const st=String(dev.status||"").toUpperCase();
+                                const shortHash=String(dev.tokenHash||"").slice(0,10)+"…";
+                                const lbl=new qx.ui.basic.Label(esc(String(dev.player||"?"))+" · W"+esc(String(dev.world||"?"))+" · "+shortHash+" · "+st);
+                                lbl.set({textColor:st==="APPROVED"?"#22c55e":"#f59e0b",width:390,alignY:"middle"});
+                                row.add(lbl);
+                                if(st!=="APPROVED"){
+                                    const ap=makeBtn("APPROVE","#166534","#ffffff",85);
+                                    ap.addListener("execute",function(){
+                                        statusLbl.setValue("Approving device…");
+                                        syncApproveCommanderDevice(dev.player,dev.world,dev.tokenHash,function(d){
+                                            if(d&&d.ok){statusLbl.setValue("✓ Device approved");statusLbl.setTextColor("#22c55e");buildAccessPage();}
+                                            else {statusLbl.setValue("✗ Device approval failed");statusLbl.setTextColor("#ef4444");}
+                                        });
+                                    });
+                                    row.add(ap);
+                                }
+                                const rm=makeBtn("REMOVE","#7f1d1d","#ffffff",80);
+                                rm.addListener("execute",function(){
+                                    if(!window.confirm("Remove this Commander device?")) return;
+                                    syncRemoveCommanderDevice(dev.player,dev.world,dev.tokenHash,function(d){
+                                        if(d&&d.ok) buildAccessPage();
+                                        else {statusLbl.setValue("✗ Device removal failed");statusLbl.setTextColor("#ef4444");}
+                                    });
+                                });
+                                row.add(rm); aVbox.add(row);
+                            });
+                        }
+
                         // Wire up buttons now that checkboxes exist
                         btnSelectAll.addListener("execute",function(){ for(const n in checkboxMap) checkboxMap[n].setValue(true); });
                         btnClearAll.addListener("execute",function(){
@@ -2622,7 +2717,10 @@
                             accessPendingData=d||{ok:false};
                             accessBannedData=d||{ok:false};
                         }
-                        finishAccessLoad();
+                        syncGetCommanderDevices(function(dev){
+                            commanderDevicesData=dev||{ok:false,devices:[]};
+                            finishAccessLoad();
+                        });
                     });
                 }
 
