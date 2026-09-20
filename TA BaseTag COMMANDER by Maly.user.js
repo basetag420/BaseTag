@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.89
+// @version      2.90
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -102,7 +102,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.88";
+            const BASETAG_LOCAL_VERSION = "2.90";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -327,7 +327,7 @@
                     try { syncFromServer(); } catch(e){ console.log(e); }
                     setInterval(function () {
                         if (commanderAuthorized) syncFromServer();
-                    }, 60000);
+                    }, 300000);
 
                     console.log("[BaseTag Commander] Loaded. Player:", myPlayerName, "World:", FORCE_WORLD_ID);
                 });
@@ -797,6 +797,14 @@
             return false;
         }
 
+        const REVISION_STORAGE_KEY = "BASETAG_WORLD_REVISION_V1_" + FORCE_WORLD_ID;
+        let serverRevision = null;
+        try {
+            const savedRevision = localStorage.getItem(REVISION_STORAGE_KEY);
+            if (savedRevision !== null && savedRevision !== "") serverRevision = Number(savedRevision);
+            if (!Number.isFinite(serverRevision)) serverRevision = null;
+        } catch(e) { serverRevision = null; }
+
         function syncFromServer() {
 
             if (syncInProgress) return;
@@ -809,7 +817,9 @@
                 syncInProgress = false;
             }, 35000);
 
-            apiCall({ action:"list", player:myPlayerName }, function(data) {
+            const listParams = { action:"list", player:myPlayerName };
+            if (serverRevision !== null) listParams.revision = serverRevision;
+            apiCall(listParams, function(data) {
                 clearTimeout(syncWatchdog);
 
                 syncInProgress = false;
@@ -817,8 +827,22 @@
                 // Uses the response of this same marker-sync request; no extra network call.
                 handlePendingAccessNotice(data);
 
-                if(!data || !data.ok || !Array.isArray(data.marks))
+                if(!data || !data.ok) return;
+
+                if (data.unchanged === true) {
+                    if (Number.isFinite(Number(data.revision))) {
+                        serverRevision = Number(data.revision);
+                        try { localStorage.setItem(REVISION_STORAGE_KEY, String(serverRevision)); } catch(e) {}
+                    }
                     return;
+                }
+
+                if(!Array.isArray(data.marks)) return;
+
+                if (Number.isFinite(Number(data.revision))) {
+                    serverRevision = Number(data.revision);
+                    try { localStorage.setItem(REVISION_STORAGE_KEY, String(serverRevision)); } catch(e) {}
+                }
 
                 const next = {};
 
