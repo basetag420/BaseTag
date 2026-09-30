@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag PLAYER by Maly
 // @namespace    Maly
-// @version      1.50
+// @version      1.51
 // @description  Player BaseTag — auto-update, saved SIM black, quick local REMOVE
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20PLAYER%20by%20Maly.user.js
@@ -520,13 +520,13 @@
                 if (!proto) return null;
 
                 // Known names from older TA builds.
-                const known = ["WHSCDA", "WXQWPA", "BCUSOS"];
+                const known = ["YKFLPM", "WHSCDA", "WXQWPA", "BCUSOS"];
                 for (const n of known) {
                     try {
                         if (typeof proto[n] === "function") {
                             const src = Function.prototype.toString.call(proto[n]);
                             // BCUSOS is accepted only when it is really the plate-colour getter.
-                            if (n !== "BCUSOS" || src.indexOf("RRLJOR") !== -1) {
+                            if (n !== "BCUSOS" || src.indexOf("RRLJOR") !== -1 || src.indexOf("AWAWSA") !== -1) {
                                 console.log("[BaseTag] color method:", n);
                                 return n;
                             }
@@ -549,7 +549,8 @@
 
                         // EA 27.08.2026 build: the native background-plate colour enum
                         // is obfuscated as $I.RRLJOR. This is the strongest signature.
-                        if (src.indexOf("$I.RRLJOR.") !== -1 || src.indexOf("RRLJOR.") !== -1) score += 30;
+                        if (src.indexOf("$I.RRLJOR.") !== -1 || src.indexOf("RRLJOR.") !== -1 ||
+                            src.indexOf("$I.AWAWSA.") !== -1 || src.indexOf("AWAWSA.") !== -1) score += 30;
 
                         // Older builds / readable aliases.
                         if (src.indexOf("EBackgroundPlateColor") !== -1) score += 30;
@@ -972,6 +973,15 @@
                             name: "MEMBER"
                         };
                     }
+
+                    for (const k in mySimSaves) {
+                        if (!mySimSaves[k] || !marks[k]) continue;
+                        next[k]={
+                            color: ClientLib.Vis.EBackgroundPlateColor.Black,
+                            type: String(marks[k].type||""),
+                            name: String(marks[k].name||"")
+                        };
+                    }
                 } catch(e) {}
                 plateColorByCoord=next;
             }
@@ -985,7 +995,7 @@
                     if(k===STORAGE_KEY) {
                         rebuildMarksById();
                         rebuildPlateColorIndex();
-                    } else if(k===MEMBER_STORAGE_KEY) {
+                    } else if(k===MEMBER_STORAGE_KEY || k===SIM_STORAGE_KEY) {
                         rebuildPlateColorIndex();
                     }
                 } catch(e) {}
