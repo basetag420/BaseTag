@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TA BaseTag COMMANDER by Maly
 // @namespace    Maly
-// @version      2.90
+// @version      2.91
 // @description  Commander BaseTag — server whitelist + per-install device token
 // @updateURL    https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
 // @downloadURL  https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js
@@ -73,9 +73,10 @@
             }
 
             const commanderDeviceToken = getOrCreateCommanderToken();
-            // ADMIN_KEY is intentionally kept only in memory for the current game session.
-            // It is requested only when opening the Alliance Access section.
+            // Alliance Access ADMIN_KEY is persisted only after successful backend verification.
+            const ALLIANCE_ACCESS_ADMIN_KEY_STORAGE = "BASETAG_COMMANDER_ALLIANCE_ACCESS_ADMIN_KEY_V1";
             let allianceAccessAdminKey = "";
+            try { allianceAccessAdminKey = String(localStorage.getItem(ALLIANCE_ACCESS_ADMIN_KEY_STORAGE) || "").trim(); } catch(e) {}
 
             function getWorldNumber() {
                 const m = String(pageWindow.location.pathname || "").match(/\/(\d+)\//);
@@ -102,7 +103,7 @@
             let shiftPending = [];
             let shiftPanel   = null;
             let lastPlayersHash = "";
-            const BASETAG_LOCAL_VERSION = "2.90";
+            const BASETAG_LOCAL_VERSION = "2.91";
             const BASETAG_RAW_UPDATE_URL = "https://raw.githubusercontent.com/basetag420/BaseTag/main/TA%20BaseTag%20COMMANDER%20by%20Maly.user.js";
 
             function compareVersions(a,b) {
@@ -966,7 +967,10 @@
                 params = params || {};
                 params.adminKey = allianceAccessAdminKey;
                 apiCall(params, function(d){
-                    if (d && d.error === "admin unauthorized") allianceAccessAdminKey = "";
+                    if (d && d.error === "admin unauthorized") {
+                        allianceAccessAdminKey = "";
+                        try { localStorage.removeItem(ALLIANCE_ACCESS_ADMIN_KEY_STORAGE); } catch(e) {}
+                    }
                     if (cb) cb(d);
                 });
             }
@@ -1007,8 +1011,12 @@
                 if (!key) { cb(false); return; }
                 allianceAccessAdminKey = key;
                 adminApiCall({ action:"adminCheck" }, function(d){
-                    if (d && d.ok && d.admin === true) { cb(true); return; }
+                    if (d && d.ok && d.admin === true) {
+                        try { localStorage.setItem(ALLIANCE_ACCESS_ADMIN_KEY_STORAGE, allianceAccessAdminKey); } catch(e) {}
+                        cb(true); return;
+                    }
                     allianceAccessAdminKey = "";
+                    try { localStorage.removeItem(ALLIANCE_ACCESS_ADMIN_KEY_STORAGE); } catch(e) {}
                     try { window.alert("Alliance Access: invalid ADMIN_KEY."); } catch(e) {}
                     cb(false);
                 });
@@ -1027,13 +1035,13 @@
                 if (!proto) return null;
 
                 // Known names from older TA builds.
-                const known = ["WHSCDA", "WXQWPA", "BCUSOS"];
+                const known = ["YKFLPM", "WHSCDA", "WXQWPA", "BCUSOS"];
                 for (const n of known) {
                     try {
                         if (typeof proto[n] === "function") {
                             const src = Function.prototype.toString.call(proto[n]);
                             // BCUSOS is accepted only when it is really the plate-colour getter.
-                            if (n !== "BCUSOS" || src.indexOf("RRLJOR") !== -1) {
+                            if (n !== "BCUSOS" || src.indexOf("RRLJOR") !== -1 || src.indexOf("AWAWSA") !== -1) {
                                 console.log("[BaseTag] color method:", n);
                                 return n;
                             }
@@ -1056,7 +1064,8 @@
 
                         // EA 27.08.2026 build: the native background-plate colour enum
                         // is obfuscated as $I.RRLJOR. This is the strongest signature.
-                        if (src.indexOf("$I.RRLJOR.") !== -1 || src.indexOf("RRLJOR.") !== -1) score += 30;
+                        if (src.indexOf("$I.RRLJOR.") !== -1 || src.indexOf("RRLJOR.") !== -1 ||
+                            src.indexOf("$I.AWAWSA.") !== -1 || src.indexOf("AWAWSA.") !== -1) score += 30;
 
                         // Older builds / readable aliases.
                         if (src.indexOf("EBackgroundPlateColor") !== -1) score += 30;
@@ -2524,6 +2533,29 @@
                     btnRefreshAccess.addListener("execute",function(){ buildAccessPage(); });
                     pageAccess.add(aTbar);
 
+                    // Players / Commanders sub-tabs
+                    let accessSubTab="players";
+                    let playerAccessRows=[];
+                    let commanderAccessRows=[];
+                    const subTabs=new qx.ui.container.Composite(new qx.ui.layout.HBox(0));
+                    subTabs.set({padding:[2,12,6,12],backgroundColor:"#060910"});
+                    const btnPlayersTab=new qx.ui.form.Button("PLAYERS");
+                    const btnCommandersTab=new qx.ui.form.Button("COMMANDERS");
+                    btnPlayersTab.set({appearance:"button-standard-nod",height:28,backgroundColor:"#0a2a4a",textColor:"#00ccff"});
+                    btnCommandersTab.set({appearance:"button-standard-nod",height:28,backgroundColor:"#162033",textColor:"#94a3b8"});
+                    subTabs.add(btnPlayersTab); subTabs.add(btnCommandersTab); pageAccess.add(subTabs);
+                    function applyAccessSubTab(tab){
+                        accessSubTab=tab;
+                        const players=tab==="players";
+                        btnPlayersTab.setBackgroundColor(players?"#0a2a4a":"#162033"); btnPlayersTab.setTextColor(players?"#00ccff":"#94a3b8");
+                        btnCommandersTab.setBackgroundColor(players?"#162033":"#0a2a4a"); btnCommandersTab.setTextColor(players?"#94a3b8":"#00ccff");
+                        aTbar.setVisibility(players?"visible":"excluded");
+                        playerAccessRows.forEach(function(w){w.setVisibility(players?"visible":"excluded");});
+                        commanderAccessRows.forEach(function(w){w.setVisibility(players?"excluded":"visible");});
+                    }
+                    btnPlayersTab.addListener("execute",function(){applyAccessSubTab("players");});
+                    btnCommandersTab.addListener("execute",function(){applyAccessSubTab("commanders");});
+
                     // Member list area
                     const aScroll=new qx.ui.container.Scroll(); aScroll.set({backgroundColor:"#080b14"});
                     const aVbox=new qx.ui.container.Composite(new qx.ui.layout.VBox(2)); aVbox.set({padding:[6,12]});
@@ -2564,6 +2596,7 @@
 
                         aVbox.removeAll();
                         checkboxMap={};
+                        playerAccessRows=[]; commanderAccessRows=[];
 
                         // Access page must never depend on the game's fragile/obfuscated
                         // alliance-member collection. The Players sheet is the authoritative
@@ -2596,13 +2629,20 @@
                         });
                         if(myPlayerName) memberMap[String(myPlayerName).toLowerCase()]=myPlayerName;
 
-                        const members=Object.keys(memberMap)
-                            .map(function(k){return memberMap[k];})
-                            .sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
+                        const members=Object.keys(memberMap).map(function(k){return memberMap[k];});
+                        function playerAccessRank(name){
+                            const k=String(name||"").toLowerCase();
+                            if(bannedSet.has(k)) return 2;
+                            if(pendingSet.has(k)) return 0;
+                            return 1;
+                        }
+                        members.sort(function(a,b){
+                            return playerAccessRank(a)-playerAccessRank(b) || String(a).toLowerCase().localeCompare(String(b).toLowerCase());
+                        });
 
                         if(!members.length) {
                             const noMembers=new qx.ui.basic.Label("⚠ No players found in the BaseTag access list.");
-                            noMembers.set({textColor:"#f59e0b",padding:10,rich:true}); aVbox.add(noMembers);
+                            noMembers.set({textColor:"#f59e0b",padding:10,rich:true}); aVbox.add(noMembers); playerAccessRows.push(noMembers);
                         } else {
                             // Column headers
                             const hRow=new qx.ui.container.Composite(new qx.ui.layout.HBox(0)); hRow.set({padding:[2,8],backgroundColor:"#0a0f1e"});
@@ -2610,7 +2650,7 @@
                             const hName=new qx.ui.basic.Label("Player Name"); hName.set({textColor:"#1e3a5a",width:260,font:"bold"});
                             const hAllow=new qx.ui.basic.Label("Approve"); hAllow.set({textColor:"#1e3a5a",width:90,font:"bold"});
                             const hBan=new qx.ui.basic.Label("Ban"); hBan.set({textColor:"#1e3a5a",width:90,font:"bold"});
-                            hRow.add(hAccess); hRow.add(hName); hRow.add(hAllow); hRow.add(hBan); aVbox.add(hRow);
+                            hRow.add(hAccess); hRow.add(hName); hRow.add(hAllow); hRow.add(hBan); aVbox.add(hRow); playerAccessRows.push(hRow);
 
                             members.forEach(function(name, idx) {
                                 const isBanned=bannedSet.has(name.toLowerCase());
@@ -2656,7 +2696,7 @@
                                     if(isBanned) syncUnbanPlayer(name,done); else syncBanPlayer(name,done);
                                 });
                                 row.add(cb); row.add(nameLbl); row.add(allowBtn); row.add(banBtn);
-                                aVbox.add(row);
+                                aVbox.add(row); playerAccessRows.push(row);
                                 checkboxMap[name]=cb;
                             });
                         }
@@ -2664,12 +2704,21 @@
                         // Commander devices — ADMIN_KEY protected because this entire page is protected.
                         const devSep=new qx.ui.basic.Label("Commander Devices");
                         devSep.set({textColor:"#00ccff",font:"bold",padding:[14,0,6,0]});
-                        aVbox.add(devSep);
+                        aVbox.add(devSep); commanderAccessRows.push(devSep);
                         const devHelp=new qx.ui.basic.Label("Each browser/device is approved once. Approving a new one does not remove existing devices.");
-                        devHelp.set({textColor:"#64748b",padding:[0,0,6,0]}); aVbox.add(devHelp);
-                        const devices=(commanderDevicesData&&commanderDevicesData.ok&&Array.isArray(commanderDevicesData.devices))?commanderDevicesData.devices:[];
+                        devHelp.set({textColor:"#64748b",padding:[0,0,6,0]}); aVbox.add(devHelp); commanderAccessRows.push(devHelp);
+                        const devices=(commanderDevicesData&&commanderDevicesData.ok&&Array.isArray(commanderDevicesData.devices))?commanderDevicesData.devices.slice():[];
+                        function commanderAccessRank(dev){
+                            const st=String(dev.status||"").toUpperCase();
+                            if(st==="PENDING"||st==="DEVICE_PENDING") return 0;
+                            if(st==="BANNED") return 2;
+                            return 1;
+                        }
+                        devices.sort(function(a,b){
+                            return commanderAccessRank(a)-commanderAccessRank(b) || String(a.player||"").toLowerCase().localeCompare(String(b.player||"").toLowerCase()) || String(a.world||"").localeCompare(String(b.world||""));
+                        });
                         if(!devices.length){
-                            const none=new qx.ui.basic.Label("No registered Commander devices yet."); none.set({textColor:"#475569",padding:6}); aVbox.add(none);
+                            const none=new qx.ui.basic.Label("No registered Commander devices yet."); none.set({textColor:"#475569",padding:6}); aVbox.add(none); commanderAccessRows.push(none);
                         } else {
                             devices.forEach(function(dev,di){
                                 const row=new qx.ui.container.Composite(new qx.ui.layout.HBox(8));
@@ -2677,7 +2726,7 @@
                                 const st=String(dev.status||"").toUpperCase();
                                 const shortHash=String(dev.tokenHash||"").slice(0,10)+"…";
                                 const lbl=new qx.ui.basic.Label(esc(String(dev.player||"?"))+" · W"+esc(String(dev.world||"?"))+" · "+shortHash+" · "+st);
-                                lbl.set({textColor:st==="APPROVED"?"#22c55e":"#f59e0b",width:390,alignY:"middle"});
+                                lbl.set({textColor:st==="BANNED"?"#ef4444":(st==="PENDING"||st==="DEVICE_PENDING"?"#f59e0b":"#22c55e"),width:390,alignY:"middle"});
                                 row.add(lbl);
                                 if(st!=="APPROVED"){
                                     const ap=makeBtn("APPROVE","#166534","#ffffff",85);
@@ -2698,9 +2747,11 @@
                                         else {statusLbl.setValue("✗ Device removal failed");statusLbl.setTextColor("#ef4444");}
                                     });
                                 });
-                                row.add(rm); aVbox.add(row);
+                                row.add(rm); aVbox.add(row); commanderAccessRows.push(row);
                             });
                         }
+
+                        applyAccessSubTab(accessSubTab);
 
                         // Wire up buttons now that checkboxes exist
                         btnSelectAll.addListener("execute",function(){ for(const n in checkboxMap) checkboxMap[n].setValue(true); });
